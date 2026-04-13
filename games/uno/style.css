@@ -31,12 +31,20 @@ body {
   background: rgba(255,255,255,.08);
   backdrop-filter: blur(6px);
   transition: background .3s, color .3s;
+  grid-area: banner;
 }
 #turn-banner.your-turn { background: rgba(46,204,113,.25); color: #2ecc71; }
 #turn-banner.cpu-turn  { background: rgba(231,76,60,.25);  color: #e74c3c; }
 
 /* ── Sections ───────────────────────────────────────────── */
-#cpu-section, #player-section { text-align: center; }
+#cpu-section {
+  text-align: center;
+  grid-area: cpu;
+}
+#player-section {
+  text-align: center;
+  grid-area: player;
+}
 .area-label { font-size: .95em; opacity: .75; margin-bottom: 6px; }
 
 .hand {
@@ -50,8 +58,8 @@ body {
 
 /* ── Cards ──────────────────────────────────────────────── */
 .card {
-  width: 66px;
-  height: 98px;
+  width: var(--card-w);
+  height: var(--card-h);
   border-radius: 10px;
   border: 3px solid rgba(255,255,255,.75);
   display: flex;
@@ -122,12 +130,13 @@ body {
   padding: 18px 24px;
   background: rgba(0,0,0,.25);
   border-radius: 20px;
+  grid-area: play;
 }
 
 /* Draw pile */
 #deck-pile {
-  width: 74px;
-  height: 110px;
+  width: var(--pile-w);
+  height: var(--pile-h);
   border-radius: 10px;
   border: 3px dashed rgba(255,255,255,.35);
   background: repeating-linear-gradient(
@@ -154,7 +163,7 @@ body {
 #deck-pile.inactive { opacity: .45; cursor: default; }
 
 /* Discard top */
-#discard-top .card { width: 74px; height: 110px; }
+#discard-top .card { width: var(--pile-w); height: var(--pile-h); }
 #discard-top .card .c-mid { font-size: 2.2em; }
 
 /* Color indicator dot */
@@ -183,6 +192,7 @@ body {
   align-items: center;
   justify-content: center;
   backdrop-filter: blur(5px);
+  grid-area: msg;
 }
 
 /* ── Modals ─────────────────────────────────────────────── */
@@ -253,10 +263,10 @@ body {
 }
 
 /* ── Responsive ─────────────────────────────────────────── */
-@media (max-width: 520px) {
-  .card { width: 52px; height: 78px; }
-  .card .c-mid { font-size: 1.5em; }
-  #deck-pile, #discard-top .card { width: 60px; height: 90px; }
-  #discard-top .card .c-mid { font-size: 1.8em; }
-  .modal-box { padding: 28px 24px; }
+
+:root {
+  --card-w: 66px;
+  --card-h: 98px;
+  --pile-w: 74px;
+  --pile-h: 110px;
 }
