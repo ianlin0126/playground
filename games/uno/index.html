@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UNO!</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- Turn banner -->
+    <div id="turn-banner"><span id="turn-text">Loading...</span></div>
+
+    <!-- Computer area -->
+    <section id="cpu-section">
+      <div class="area-label">🤖 Computer &mdash; <span id="cpu-count"></span></div>
+      <div id="cpu-hand" class="hand"></div>
+    </section>
+
+    <!-- Play area: draw pile / discard / color indicator -->
+    <section id="play-section">
+      <div id="deck-pile" title="Draw a card">
+        <div class="back-label">DRAW</div>
+      </div>
+      <div id="discard-top"></div>
+      <div id="color-dot" title="Current color"></div>
+    </section>
+
+    <!-- Player area -->
+    <section id="player-section">
+      <div class="area-label">🙂 You &mdash; <span id="player-count"></span></div>
+      <div id="player-hand" class="hand"></div>
+    </section>
+
+    <!-- Message bar -->
+    <div id="message-bar"><span id="message"></span></div>
+
+  </div>
+
+  <!-- Color picker modal -->
+  <div id="color-modal" class="modal hidden">
+    <div class="modal-box">
+      <h2>Pick a color!</h2>
+      <div id="color-picker">
+        <button class="color-pick-btn" data-color="red"    style="background:#e74c3c">Red</button>
+        <button class="color-pick-btn" data-color="blue"   style="background:#3498db">Blue</button>
+        <button class="color-pick-btn" data-color="green"  style="background:#2ecc71">Green</button>
+        <button class="color-pick-btn" data-color="yellow" style="background:#f1c40f;color:#333">Yellow</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game-over modal -->
+  <div id="gameover-modal" class="modal hidden">
+    <div class="modal-box">
+      <div id="gameover-emoji"></div>
+      <h2 id="gameover-title"></h2>
+      <p  id="gameover-msg"></p>
+      <button id="new-game-btn">Play Again! 🎮</button>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
