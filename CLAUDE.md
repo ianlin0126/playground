@@ -5,9 +5,17 @@ This file provides guidance for AI assistants (Claude and others) working with t
 ## Repository Overview
 
 **Repository:** `ianlin0126/playground`
+**Purpose:** Kid-friendly applications and games targeted at children around 8 years old.
 **Status:** Freshly initialized — no source files committed yet.
 
-> Update this section as the project takes shape: describe the purpose, tech stack, and architecture here.
+### Audience
+
+- **Target age:** ~8 years old (early elementary school)
+- **Tone:** Playful, encouraging, and forgiving — no frustrating failure states
+- **Reading level:** Short sentences, simple words, large readable text
+- **Interaction style:** Intuitive controls; minimize reliance on reading for core gameplay
+
+> Update this section as the project takes shape: describe the chosen tech stack and architecture here.
 
 ---
 
@@ -113,6 +121,38 @@ This file provides guidance for AI assistants (Claude and others) working with t
 - Modifying CI/CD pipelines
 - Pushing to remote repositories
 - Any action visible to others or that affects shared state
+
+---
+
+## Child Safety & Content Standards
+
+All features, copy, and assets must be appropriate for children ~8 years old.
+
+### Content Rules
+
+- **No violence, gore, or frightening imagery** — even cartoon violence should be mild and consequence-free
+- **No mature themes** — no romance, politics, religion, or adult humor
+- **No dark patterns** — no manipulative mechanics, fake urgency, or pressure to spend money
+- **No external links** — do not link to any external websites or services from within the app
+- **No user-generated content shared publicly** — if kids can type or draw, it stays local
+- **No data collection** — do not collect, transmit, or store any personal information about users
+- **No ads** — do not integrate advertising SDKs or networks
+
+### UX & Accessibility Rules
+
+- Use large, high-contrast text (minimum 18px, prefer 24px+)
+- Buttons and tap targets must be large (minimum 44×44px)
+- Avoid timers that cause anxiety; if used, keep them gentle and optional
+- Always provide positive reinforcement — celebrate effort, not just success
+- Support keyboard navigation and screen readers where feasible
+- Avoid flashing animations that could trigger photosensitive conditions (follow WCAG 2.3.1)
+
+### Language & Copy Rules
+
+- Use simple, short sentences (aim for Grade 2–3 reading level)
+- Spell out words — avoid abbreviations and jargon
+- Use encouraging language ("Try again!", "Almost!", "Great job!")
+- Avoid negative framing ("Wrong", "Failed", "Loser")
 
 ---
 
