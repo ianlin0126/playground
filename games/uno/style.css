@@ -270,3 +270,54 @@ body {
   --pile-w: 74px;
   --pile-h: 110px;
 }
+
+/* ── Tablet portrait: 601–1024px ─── */
+@media (min-width: 601px) and (max-width: 1024px) and (orientation: portrait) {
+  :root {
+    --card-w: 80px;
+    --card-h: 118px;
+    --pile-w: 90px;
+    --pile-h: 132px;
+  }
+  #discard-top .card .c-mid { font-size: 2.5em; }
+  .card .c-mid { font-size: 2.1em; }
+}
+
+/* ── Tablet landscape: 601–1024px ─── */
+@media (min-width: 601px) and (max-width: 1024px) and (orientation: landscape) {
+  :root {
+    --card-w: 72px;
+    --card-h: 107px;
+    --pile-w: 80px;
+    --pile-h: 118px;
+  }
+}
+
+/* ── Phone portrait: ≤ 600px ─── */
+@media (max-width: 600px) {
+  :root {
+    --card-w: 52px;
+    --card-h: 78px;
+    --pile-w: 60px;
+    --pile-h: 90px;
+  }
+  .card .c-mid { font-size: 1.5em; }
+  .card .c-tl, .card .c-br { font-size: 0.7em; }
+  #discard-top .card .c-mid { font-size: 1.8em; }
+  #play-section { gap: 16px; padding: 12px 16px; }
+  .modal-box { padding: 28px 24px; }
+}
+
+/* ── Phone portrait small: ≤ 390px ─── */
+@media (max-width: 390px) {
+  :root {
+    --card-w: 44px;
+    --card-h: 65px;
+    --pile-w: 52px;
+    --pile-h: 76px;
+  }
+  .card .c-mid { font-size: 1.2em; }
+  .card .c-tl, .card .c-br { font-size: 0.6em; }
+  #discard-top .card .c-mid { font-size: 1.5em; }
+  #play-section { gap: 10px; }
+}
