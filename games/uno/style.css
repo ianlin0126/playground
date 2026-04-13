@@ -341,6 +341,7 @@ body {
     grid-template-rows: auto 1fr auto;
     gap: 6px;
     height: 100vh;
+    height: 100dvh;
     padding: 4px 8px;
   }
 
@@ -375,4 +376,8 @@ body {
   .card .c-mid { font-size: 1.2em; }
   .card .c-tl, .card .c-br { font-size: 0.6em; }
   #discard-top .card .c-mid { font-size: 1.5em; }
+
+  .card-playable:hover {
+    transform: translateY(-6px) scale(1.05);
+  }
 }
