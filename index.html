@@ -106,15 +106,29 @@
       .then(function(games) {
         var container = document.getElementById('games-container');
         games.forEach(function(game, i) {
-          var emoji = EMOJIS[i % EMOJIS.length];
           var a = document.createElement('a');
           a.className = 'game-card';
           a.href = 'games/' + game.slug + '/';
-          a.innerHTML =
-            '<span class="emoji">' + emoji + '</span>' +
-            '<span class="name">' + game.name + '</span>';
+          a.setAttribute('aria-label', 'Play ' + game.name);
+
+          var emojiSpan = document.createElement('span');
+          emojiSpan.className = 'emoji';
+          emojiSpan.textContent = EMOJIS[i % EMOJIS.length];
+
+          var nameSpan = document.createElement('span');
+          nameSpan.className = 'name';
+          nameSpan.textContent = game.name;
+
+          a.appendChild(emojiSpan);
+          a.appendChild(nameSpan);
           container.appendChild(a);
         });
+        if (games.length === 0) {
+          container.innerHTML = '<p style="color:#fff;font-size:1.2rem;">No games yet — come back soon! 🎮</p>';
+        }
+      })
+      .catch(function() {
+        document.getElementById('games-container').innerHTML = '<p style="color:#fff;font-size:1.2rem;">Oops! Could not load games. Try refreshing! 🔄</p>';
       });
   </script>
 
