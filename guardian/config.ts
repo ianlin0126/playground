@@ -23,11 +23,18 @@ function detectLanIp(): string {
   return "localhost";
 }
 
+const rawTelegramId = loadEnv("SON_TELEGRAM_ID");
+const parsedTelegramId = Number(rawTelegramId);
+if (!Number.isInteger(parsedTelegramId) || parsedTelegramId <= 0) {
+  console.error(`SON_TELEGRAM_ID must be a positive integer, got: "${rawTelegramId}"`);
+  process.exit(1);
+}
+
 export const config = {
   kidBotToken: loadEnv("KID_BOT_TOKEN"),
   anthropicApiKey: loadEnv("ANTHROPIC_API_KEY"),
   sonName: loadEnv("SON_NAME"),
-  sonTelegramId: Number(loadEnv("SON_TELEGRAM_ID")),
+  sonTelegramId: parsedTelegramId,
   port: 3000,
   lanIp: detectLanIp(),
   playgroundDir: new URL("..", import.meta.url).pathname.replace(/\/$/, ""),
