@@ -50,8 +50,10 @@ export async function buildGame(gameName: string): Promise<{ slug: string; url: 
     messages: [{ role: "user", content: userMessage }],
   });
 
+  if (!response.content.length || response.content[0].type !== "text") {
+    throw new Error("Unexpected response from Claude: no text content");
+  }
   const content = response.content[0];
-  if (content.type !== "text") throw new Error("Unexpected response type from Claude API");
 
   // Extract HTML — strip any accidental markdown code fences
   let html = content.text.trim();
@@ -64,10 +66,10 @@ export async function buildGame(gameName: string): Promise<{ slug: string; url: 
 
   // Update manifest
   const manifest = readManifest(gamesDir);
-  const existing = manifest.findIndex((e) => e.slug === slug);
+  const existingIndex = manifest.findIndex((e) => e.slug === slug);
   const entry = { name: gameName, slug, builtAt: new Date().toISOString() };
-  if (existing >= 0) {
-    manifest[existing] = entry;
+  if (existingIndex >= 0) {
+    manifest[existingIndex] = entry;
   } else {
     manifest.push(entry);
   }
