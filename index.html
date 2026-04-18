@@ -94,15 +94,29 @@
   <h1>Game Zone 🎮</h1>
   <p class="subtitle">Pick a game and have fun!</p>
 
-  <div class="games">
-    <a class="game-card" href="games/uno/">
-      <span class="emoji">🃏</span>
-      <span class="name">UNO!</span>
-      <span class="tagline">You vs. Computer</span>
-    </a>
-  </div>
+  <div class="games" id="games-container"></div>
 
   <footer>More games coming soon!</footer>
+
+  <script>
+    const EMOJIS = ['🃏', '🎲', '🧩', '🎯', '🕹️', '🎮', '🏆', '⭐'];
+
+    fetch('games/manifest.json')
+      .then(function(res) { return res.json(); })
+      .then(function(games) {
+        var container = document.getElementById('games-container');
+        games.forEach(function(game, i) {
+          var emoji = EMOJIS[i % EMOJIS.length];
+          var a = document.createElement('a');
+          a.className = 'game-card';
+          a.href = 'games/' + game.slug + '/';
+          a.innerHTML =
+            '<span class="emoji">' + emoji + '</span>' +
+            '<span class="name">' + game.name + '</span>';
+          container.appendChild(a);
+        });
+      });
+  </script>
 
 </body>
 </html>
