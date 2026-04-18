@@ -1,0 +1,4 @@
+.worktrees/
+.guardian/
+.env
+node_modules/
