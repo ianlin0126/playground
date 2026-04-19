@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { resolve, sep } from "path";
 import { config } from "./config";
 import { initDb, insertTurn } from "./db";
 import { getGuardianSystemPrompt } from "./prompts";
@@ -78,11 +79,13 @@ async function handleMessage(chatId: number, fromId: number, text: string): Prom
 
   conversationHistory.push({ role: "user", content: text });
 
+  const cappedHistory = conversationHistory.slice(-40);
+
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 512,
     system: getGuardianSystemPrompt(config.sonName),
-    messages: conversationHistory,
+    messages: cappedHistory,
   });
 
   if (!response.content.length || response.content[0].type !== "text") {
@@ -91,18 +94,17 @@ async function handleMessage(chatId: number, fromId: number, text: string): Prom
   }
 
   const reply = response.content[0].text;
-  conversationHistory.push({ role: "assistant", content: reply });
-  insertTurn("guardian", reply);
 
-  if (/should i make it now/i.test(reply)) {
-    const allText = conversationHistory
-      .map((m) => (typeof m.content === "string" ? m.content : ""))
-      .join(" ");
-    const match = allText.match(/(?:make|build|create)\s+(?:a\s+)?([^?.!,]{3,40}?)(?:\s*[?.!,]|$)/i);
-    if (match) pendingGameBuild = match[1].trim();
+  const tokenMatch = reply.match(/^GAME_NAME:\s*(.+)$/m);
+  if (tokenMatch) {
+    pendingGameBuild = tokenMatch[1].trim();
   }
 
-  await sendMessage(chatId, reply);
+  const cleanReply = reply.replace(/^GAME_NAME:\s*.+\n?/m, "").trim();
+  conversationHistory.push({ role: "assistant", content: cleanReply });
+  insertTurn("guardian", cleanReply);
+
+  await sendMessage(chatId, cleanReply);
 }
 
 type TelegramUpdate = {
@@ -149,7 +151,12 @@ function startServer(): ReturnType<typeof Bun.serve> {
     fetch(req) {
       let pathname = new URL(req.url).pathname;
       if (pathname === "/" || pathname.endsWith("/")) pathname += "index.html";
-      return new Response(Bun.file(config.playgroundDir + pathname));
+      const root = resolve(config.playgroundDir);
+      const filePath = resolve(root, "." + pathname);
+      if (!filePath.startsWith(root + sep)) {
+        return new Response("Forbidden", { status: 403 });
+      }
+      return new Response(Bun.file(filePath));
     },
     error(err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
