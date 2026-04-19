@@ -28,7 +28,7 @@ function writeManifest(gamesDir: string, entries: Array<{ name: string; slug: st
   writeFileSync(join(gamesDir, "manifest.json"), JSON.stringify(entries, null, 2));
 }
 
-export async function buildGame(gameName: string): Promise<{ slug: string; url: string }> {
+export async function buildGame(gameName: string, revisionRequest?: string): Promise<{ slug: string; url: string }> {
   const gamesDir = join(config.playgroundDir, "games");
   const slug = toSlug(gameName);
   const gameDir = join(gamesDir, slug);
@@ -38,7 +38,7 @@ export async function buildGame(gameName: string): Promise<{ slug: string; url: 
 
   if (isRevision) {
     const existing = readFileSync(join(gameDir, "index.html"), "utf8");
-    userMessage = `Here is the current game HTML:\n\n${existing}\n\nPlease revise it as requested.`;
+    userMessage = `Here is the current game HTML:\n\n${existing}\n\n${revisionRequest ? `Please make this change: ${revisionRequest}` : "Please make it better and more fun!"}`;
   } else {
     userMessage = `Build the game: ${gameName}`;
   }

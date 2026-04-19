@@ -12,7 +12,7 @@ const TG_BASE = `https://api.telegram.org/bot${config.kidBotToken}`;
 async function tgGet<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
   const url = new URL(`${TG_BASE}/${method}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
-  const res = await fetch(url.toString());
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(45_000) });
   const json = (await res.json()) as { ok: boolean; result: T };
   if (!json.ok) throw new Error(`Telegram ${method} failed: ${JSON.stringify(json)}`);
   return json.result;
@@ -59,8 +59,9 @@ async function handleMessage(chatId: number, fromId: number, text: string): Prom
       const gameName = pendingGameBuild;
       pendingGameBuild = null;
       await sendMessage(chatId, "Ok let me make it!! Give me a sec... 🔨⭐");
+      insertTurn("guardian", "Ok let me make it!! Give me a sec... 🔨⭐");
       try {
-        const { url } = await buildGame(gameName);
+        const { url } = await buildGame(gameName, text);
         const reply = `Here it is!! Open this on your tablet: ${url} 🎉`;
         await sendMessage(chatId, reply);
         insertTurn("guardian", reply);
@@ -74,10 +75,22 @@ async function handleMessage(chatId: number, fromId: number, text: string): Prom
       return;
     } else {
       pendingGameBuild = null;
+      const cancelMsg = "No problem! 😊 What would you like to do?";
+      await sendMessage(chatId, cancelMsg);
+      insertTurn("guardian", cancelMsg);
+      return;
     }
   }
 
   conversationHistory.push({ role: "user", content: text });
+
+  if (isFrustrated(text)) {
+    // Inject a context note for Claude (not shown to kid)
+    conversationHistory.push({
+      role: "user",
+      content: `[Guardian note: ${config.sonName} seems frustrated. Please respond with extra warmth, slow down, and offer to try something simpler or take a break.]`,
+    });
+  }
 
   const cappedHistory = conversationHistory.slice(-40);
 
