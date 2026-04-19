@@ -19,6 +19,41 @@ This file provides guidance for AI assistants (Claude and others) working with t
 
 ---
 
+## Guardian Agent
+
+The Guardian Agent is a Bun/TypeScript process that lets Ian's son interact with the playground via Telegram.
+
+**Start:** `bun run guardian` (from the `playground/` root — requires a `.env` file)
+
+**What it does:**
+- Listens to a dedicated kid Telegram bot (separate from the parent bot)
+- Holds a kid-friendly conversation powered by Claude (`claude-sonnet-4-6`)
+- Builds HTML games via the Claude API and writes them to `games/<slug>/index.html`
+- Serves the entire `playground/` directory on `http://<lan-ip>:3000/`
+- Sends the game URL back to Telegram so the kid can open it on a tablet (same WiFi)
+- Logs all conversation turns to `.guardian/conversations.db` (SQLite, gitignored)
+
+**Files:**
+- `guardian/guardian.ts` — main entry point (HTTP server + Telegram poller + conversation loop)
+- `guardian/config.ts` — env loading, LAN IP detection
+- `guardian/db.ts` — SQLite conversation log
+- `guardian/prompts.ts` — system prompts for guardian personality and game builder
+- `guardian/builder.ts` — Claude API game generation + manifest update
+
+**Configuration (`.env`, gitignored):**
+```
+KID_BOT_TOKEN=       # from BotFather
+ANTHROPIC_API_KEY=   # Anthropic API key
+SON_NAME=            # kid's first name
+SON_TELEGRAM_ID=     # kid's numeric Telegram user ID
+```
+
+**Game lobby:** `games/manifest.json` lists all built games; `index.html` fetches it dynamically. Add new entries by having the guardian build a game, or manually append to the JSON.
+
+**Parent monitoring:** Ian queries `.guardian/conversations.db` directly from his Claude Code session — `flagged=1` rows indicate messages that triggered alarm phrases.
+
+---
+
 ## Development Workflow
 
 ### Branching Strategy
@@ -59,13 +94,16 @@ This file provides guidance for AI assistants (Claude and others) working with t
 
 ## Project Structure
 
-> Document the directory layout here once the project is scaffolded. Example:
-> ```
-> src/          # Application source code
-> tests/        # Test files, mirroring src/ structure
-> docs/         # Documentation
-> scripts/      # Build/deploy scripts
-> ```
+```
+playground/
+  guardian/          # Guardian Agent source (Bun/TypeScript)
+  games/             # Built games; manifest.json lists all entries
+  .guardian/         # Runtime data (SQLite db — gitignored)
+  index.html         # Game Zone lobby (loads games from manifest.json)
+  package.json       # "guardian" script: bun run guardian/guardian.ts
+  .env.example       # Config template
+  CLAUDE.md          # This file
+```
 
 ---
 
