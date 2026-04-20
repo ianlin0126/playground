@@ -34,7 +34,27 @@ function updateManifest(gamesDir: string, gameName: string, slug: string): void 
   writeManifest(gamesDir, manifest);
 }
 
-function buildPrompt(gameName: string, slug: string, isRevision: boolean, existingHtml?: string, revisionRequest?: string): string {
+type ConversationTurn = { role: string; content: string };
+
+function formatConversationContext(turns: ConversationTurn[]): string {
+  if (!turns.length) return "";
+  const lines = turns.map((t) => {
+    const speaker = t.role === "user" ? "Clive (kid)" : "Guardian";
+    return `${speaker}: ${typeof t.content === "string" ? t.content : "[image/media]"}`;
+  });
+  return `\nRecent conversation (for context):\n${lines.join("\n")}\n`;
+}
+
+function buildPrompt(
+  gameName: string,
+  slug: string,
+  isRevision: boolean,
+  existingHtml?: string,
+  revisionRequest?: string,
+  conversationContext?: ConversationTurn[]
+): string {
+  const context = conversationContext?.length ? formatConversationContext(conversationContext) : "";
+
   const requirements = `Requirements:
 - Single self-contained index.html — all CSS and JS inline, zero external dependencies
 - Mobile-first: tap targets >= 44px, text >= 24px, bright cheerful colors
@@ -59,7 +79,7 @@ GAME_READY: games/${slug}/index.html`;
     return `Here is the current game at games/${slug}/index.html:
 
 ${existingHtml}
-
+${context}
 Revision request: ${revisionRequest ?? "Make it better and more fun!"}
 
 Apply the change to games/${slug}/index.html.
@@ -70,7 +90,7 @@ ${verifySteps}`;
   }
 
   return `Build a browser game called "${gameName}" for a 7–8 year old child.
-
+${context}
 Write the complete game to: games/${slug}/index.html
 
 ${requirements}
@@ -91,13 +111,14 @@ async function buildGameViaJobQueue(
   isRevision: boolean,
   existingHtml: string | undefined,
   revisionRequest: string | undefined,
+  conversationContext: ConversationTurn[],
   onProgress?: (msg: string) => void
 ): Promise<{ slug: string; url: string }> {
   mkdirSync(JOBS_DIR, { recursive: true });
 
   const id = `${Date.now()}-${slug}`;
   const jobPath = join(JOBS_DIR, `${id}.json`);
-  const prompt = buildPrompt(gameName, slug, isRevision, existingHtml, revisionRequest);
+  const prompt = buildPrompt(gameName, slug, isRevision, existingHtml, revisionRequest, conversationContext);
 
   writeFileSync(jobPath, JSON.stringify({
     id, gameName, slug, isRevision,
@@ -156,11 +177,12 @@ async function buildGameSubprocess(
   isRevision: boolean,
   existingHtml: string | undefined,
   revisionRequest: string | undefined,
+  conversationContext: ConversationTurn[],
   onProgress?: (msg: string) => void
 ): Promise<{ slug: string; url: string }> {
   const gamesDir = join(config.playgroundDir, "games");
   const gameDir = join(gamesDir, slug);
-  const prompt = buildPrompt(gameName, slug, isRevision, existingHtml, revisionRequest);
+  const prompt = buildPrompt(gameName, slug, isRevision, existingHtml, revisionRequest, conversationContext);
 
   const proc = Bun.spawn(["claude", "--dangerously-skip-permissions", "-p", prompt], {
     cwd: config.playgroundDir,
@@ -209,7 +231,8 @@ async function buildGameSubprocess(
 export async function buildGame(
   gameName: string,
   revisionRequest?: string,
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
+  conversationContext: ConversationTurn[] = []
 ): Promise<{ slug: string; url: string }> {
   const gamesDir = join(config.playgroundDir, "games");
   const slug = toSlug(gameName);
@@ -219,13 +242,13 @@ export async function buildGame(
   const existingHtml = isRevision ? readFileSync(join(gamesDir, slug, "index.html"), "utf8") : undefined;
 
   try {
-    return await buildGameViaJobQueue(gameName, slug, isRevision, existingHtml, revisionRequest, onProgress);
+    return await buildGameViaJobQueue(gameName, slug, isRevision, existingHtml, revisionRequest, conversationContext, onProgress);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg === "PICKUP_TIMEOUT" || msg.startsWith("Build timed out")) {
       console.log("[builder] Falling back to subprocess build");
       onProgress?.("Still building... ⚙️");
-      return buildGameSubprocess(gameName, slug, isRevision, existingHtml, revisionRequest, onProgress);
+      return buildGameSubprocess(gameName, slug, isRevision, existingHtml, revisionRequest, conversationContext, onProgress);
     }
     throw err;
   }

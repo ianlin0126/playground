@@ -75,7 +75,11 @@ async function handleMessage(
       await sendMessage(chatId, "Ok let me make it!! Give me a sec... 🔨⭐");
       insertTurn("guardian", "Ok let me make it!! Give me a sec... 🔨⭐");
       try {
-        const { url } = await buildGame(gameName, revisionRequest, (msg) => sendMessage(chatId, msg).catch(() => {}));
+        const recentContext = conversationHistory.slice(-10).map((m) => ({
+          role: m.role,
+          content: typeof m.content === "string" ? m.content : "[media]",
+        }));
+        const { url } = await buildGame(gameName, revisionRequest, (msg) => sendMessage(chatId, msg).catch(() => {}), recentContext);
         const reply = `Here it is!! Open this on your tablet: ${url} 🎉`;
         await sendMessage(chatId, reply);
         insertTurn("guardian", reply);
