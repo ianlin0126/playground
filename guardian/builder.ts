@@ -135,5 +135,5 @@ export async function buildGame(
   }
   writeManifest(gamesDir, manifest);
 
-  return { slug, url: `http://${config.lanIp}:${config.port}/games/${slug}/` };
+  return { slug, url: `http://${config.lanIp}:${config.port}/games/${slug}/?v=${Date.now()}` };
 }

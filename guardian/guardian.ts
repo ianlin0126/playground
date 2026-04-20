@@ -213,7 +213,7 @@ function startServer(): ReturnType<typeof Bun.serve> {
         return new Response("Forbidden", { status: 403 });
       }
       const file = Bun.file(filePath);
-      const headers = filePath.endsWith(".html") ? { "Cache-Control": "no-store" } : undefined;
+      const headers = filePath.endsWith(".html") ? { "Cache-Control": "no-cache, no-store, must-revalidate" } : undefined;
       return new Response(file, { headers });
     },
     error(err) {
