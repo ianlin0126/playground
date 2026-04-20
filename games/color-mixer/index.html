@@ -320,20 +320,20 @@ body {
   </div>
   <div class="chips-row" id="chipsRow"></div>
   <div class="hint" id="hint">Tap two paint colors!</div>
-  <button class="fresh-btn" onclick="resetMix()">🔄 Start Fresh</button>
+  <button class="fresh-btn" id="freshBtn">🔄 Start Fresh</button>
 </div>
 
 <!-- Paints -->
 <div class="paints-section" id="paintsSection">
-  <button class="paint-btn" id="btnRed"    onclick="addColor('red')"   >
+  <button class="paint-btn" id="btnRed">
     <div class="paint-drop" style="background:radial-gradient(circle at 35% 35%, #ff7961, #d32f2f);"></div>
     <span class="paint-label">Red</span>
   </button>
-  <button class="paint-btn" id="btnYellow" onclick="addColor('yellow')">
+  <button class="paint-btn" id="btnYellow">
     <div class="paint-drop" style="background:radial-gradient(circle at 35% 35%, #fff176, #f9a825);"></div>
     <span class="paint-label">Yellow</span>
   </button>
-  <button class="paint-btn" id="btnBlue"   onclick="addColor('blue')"  >
+  <button class="paint-btn" id="btnBlue">
     <div class="paint-drop" style="background:radial-gradient(circle at 35% 35%, #64b5f6, #1565c0);"></div>
     <span class="paint-label">Blue</span>
   </button>
@@ -344,7 +344,7 @@ body {
   <div class="celeb-emoji" id="celebEmoji">🌟</div>
   <div class="celeb-line1" id="celebLine1">Amazing!</div>
   <div class="celeb-line2" id="celebLine2">You made Orange!</div>
-  <button class="next-btn" onclick="nextChallenge()">Next Color! →</button>
+  <button class="next-btn" id="nextBtn">Next Color! →</button>
 </div>
 
 <script>
@@ -505,6 +505,13 @@ body {
     current = (current + 1) % challenges.length;
     showChallenge(current);
   }
+
+  // Wire up buttons from inside the IIFE so closured functions are reachable
+  document.getElementById('btnRed').addEventListener('click', function() { addColor('red'); });
+  document.getElementById('btnYellow').addEventListener('click', function() { addColor('yellow'); });
+  document.getElementById('btnBlue').addEventListener('click', function() { addColor('blue'); });
+  document.getElementById('freshBtn').addEventListener('click', resetMix);
+  document.getElementById('nextBtn').addEventListener('click', nextChallenge);
 
   // kick off
   showChallenge(0);
