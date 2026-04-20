@@ -87,7 +87,7 @@ export async function buildGame(
     stdin: "ignore",
   });
 
-  const TIMEOUT_MS = 5 * 60 * 1000;
+  const TIMEOUT_MS = 10 * 60 * 1000;
   let timedOut = false;
   const timer60 = setTimeout(() => onProgress?.("Still working on it... 🔨 Almost there!"), 60_000);
   const timer120 = setTimeout(() => onProgress?.("Making it extra special! ✨ Just a bit longer..."), 120_000);
