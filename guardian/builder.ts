@@ -83,7 +83,8 @@ export async function buildGame(
   const proc = Bun.spawn(["claude", "--dangerously-skip-permissions", "-p", prompt], {
     cwd: config.playgroundDir,
     stdout: "pipe",
-    stderr: "pipe",
+    stderr: "inherit", // must not pipe-and-ignore — fills buffer and deadlocks
+    stdin: "ignore",
   });
 
   const TIMEOUT_MS = 5 * 60 * 1000;
