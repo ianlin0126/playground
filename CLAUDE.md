@@ -203,6 +203,45 @@ All features, copy, and assets must be appropriate for children ~8 years old.
 
 ---
 
+## Guardian Build Queue
+
+When Clive requests a game via Telegram, the guardian writes a job to `.guardian/jobs/<id>.json`. Ian's Claude Code session processes these jobs with full tool access — producing the same quality as direct Claude Code prompting.
+
+### Start monitoring (run once per session)
+
+Use the Monitor tool pointed at this shell loop:
+
+```bash
+while true; do
+  for f in /Users/ian/ai-workspace/playground/.guardian/jobs/*.json; do
+    [ -f "$f" ] || continue
+    status=$(python3 -c "import json; print(json.load(open('$f'))['status'])" 2>/dev/null)
+    [ "$status" = "pending" ] && echo "JOB:$f"
+  done
+  sleep 3
+done
+```
+
+Each `JOB:<path>` line is a notification of a new pending build request.
+
+### Processing a job (when a JOB: notification arrives)
+
+**Must be picked up within 3 minutes — otherwise guardian falls back to subprocess.**
+
+1. Read the job file. Set `status → "in_progress"`, `pickedUpAt → <ISO now>`, write back.
+2. Execute the `prompt` field using full tool access (Read, Write, Edit, Bash, WebFetch).
+3. **Mandatory quality checks before marking done:**
+   - **No truncation:** Read the written file — confirm it ends with `</html>` and all `<script>` blocks are closed.
+   - **IIFE scoping:** Scan every `onclick=`, `onchange=`, `onsubmit=` attribute. Each referenced function must be declared at **top-level scope** in a `<script>` tag — NOT inside an IIFE like `(function(){...})()` or `window.onload = function(){...}`. If found, fix it: move functions to top-level or replace inline handlers with `addEventListener` calls inside the closure.
+   - **URL check:** Fetch `http://localhost:<port>/games/<slug>/` and confirm a 200 HTML response.
+4. If any check fails, fix and re-check. Iterate until all pass.
+5. **On success:** Write back: `status: "done"`, `url: "http://<lanIp>:<port>/games/<slug>/?v=<Date.now()>"`, `completedAt: <ISO now>`.
+6. **On failure:** Write back: `status: "failed"`, `error: "<description>"`, `completedAt: <ISO now>`.
+
+The guardian polls every 4 seconds and picks up the status change automatically.
+
+---
+
 ## Updating This File
 
 Keep this file current as the project evolves:
