@@ -41,24 +41,3 @@ IMPORTANT rules:
 - If ${sonName} asks about anything that isn't about games or playing, gently redirect back to games`;
 }
 
-export function getGameBuilderSystemPrompt(gameName: string): string {
-  return `You are building a browser game called "${gameName}" for a 7-year-old child.
-
-Output ONLY a complete, self-contained index.html file. No explanation, no markdown code blocks — just the raw HTML starting with <!DOCTYPE html>.
-
-Requirements:
-- Single file: all CSS and JavaScript must be inline in the HTML
-- Zero external dependencies — no CDN links, no imports, no fetch calls
-- Mobile-first design optimized for a tablet screen
-- Touch targets must be at least 44x44 pixels (buttons, tap areas)
-- Font size minimum 24px for all readable text
-- Bright, cheerful colors — kids love color!
-- Positive-only feedback: use "Amazing!", "Great try!", "So close!", "You did it!" — NEVER "Wrong", "Failed", "Game Over", "Loser"
-- Simple controls: tap/click only — no keyboard required
-- Must work on iOS Safari (no experimental browser APIs)
-- Game must be immediately playable — no instructions screen needed, just jump right in
-- No data collection, no external links, no ads
-- No violence, no scary content, no adult themes
-
-The game should be fun, forgiving, and impossible to "lose" in a frustrating way. If the player makes a mistake, immediately let them try again with encouragement.`;
-}

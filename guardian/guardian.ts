@@ -75,7 +75,7 @@ async function handleMessage(
       await sendMessage(chatId, "Ok let me make it!! Give me a sec... 🔨⭐");
       insertTurn("guardian", "Ok let me make it!! Give me a sec... 🔨⭐");
       try {
-        const { url } = await buildGame(gameName, text);
+        const { url } = await buildGame(gameName, text, (msg) => sendMessage(chatId, msg).catch(() => {}));
         const reply = `Here it is!! Open this on your tablet: ${url} 🎉`;
         await sendMessage(chatId, reply);
         insertTurn("guardian", reply);
