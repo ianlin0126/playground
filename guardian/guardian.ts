@@ -32,7 +32,7 @@ async function downloadPhoto(fileId: string): Promise<{ base64: string; mimeType
 }
 
 const conversationHistory: Anthropic.Messages.MessageParam[] = [];
-let pendingGameBuild: string | null = null;
+let pendingGameBuild: { gameName: string; revisionRequest?: string } | null = null;
 
 const FRUSTRATION_SIGNALS = ["i hate", "this is dumb", "ughhh", "forget it", "this doesnt work", "stupid"];
 const BUILD_CONFIRMATIONS = ["yes", "yeah", "yep", "yup", "ok", "okay", "sure", "do it", "build it", "make it", "lets go", "let's go"];
@@ -70,12 +70,12 @@ async function handleMessage(
 
   if (pendingGameBuild !== null) {
     if (isConfirmation(text)) {
-      const gameName = pendingGameBuild;
+      const { gameName, revisionRequest } = pendingGameBuild;
       pendingGameBuild = null;
       await sendMessage(chatId, "Ok let me make it!! Give me a sec... 🔨⭐");
       insertTurn("guardian", "Ok let me make it!! Give me a sec... 🔨⭐");
       try {
-        const { url } = await buildGame(gameName, text, (msg) => sendMessage(chatId, msg).catch(() => {}));
+        const { url } = await buildGame(gameName, revisionRequest, (msg) => sendMessage(chatId, msg).catch(() => {}));
         const reply = `Here it is!! Open this on your tablet: ${url} 🎉`;
         await sendMessage(chatId, reply);
         insertTurn("guardian", reply);
@@ -84,7 +84,7 @@ async function handleMessage(
         const reply = `Oops, something went a little wrong! 😅 Want to try again? Just say yes!`;
         await sendMessage(chatId, reply);
         insertTurn("guardian", reply);
-        pendingGameBuild = gameName;
+        pendingGameBuild = { gameName, revisionRequest };
       }
       return;
     } else {
@@ -138,7 +138,7 @@ async function handleMessage(
 
   const tokenMatch = reply.match(/^GAME_NAME:\s*(.+)$/m);
   if (tokenMatch) {
-    pendingGameBuild = tokenMatch[1].trim();
+    pendingGameBuild = { gameName: tokenMatch[1].trim(), revisionRequest: text || undefined };
   }
 
   const cleanReply = reply.replace(/^GAME_NAME:\s*.+\n?/m, "").trim();
@@ -212,7 +212,9 @@ function startServer(): ReturnType<typeof Bun.serve> {
       if (!filePath.startsWith(root + sep)) {
         return new Response("Forbidden", { status: 403 });
       }
-      return new Response(Bun.file(filePath));
+      const file = Bun.file(filePath);
+      const headers = filePath.endsWith(".html") ? { "Cache-Control": "no-store" } : undefined;
+      return new Response(file, { headers });
     },
     error(err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
