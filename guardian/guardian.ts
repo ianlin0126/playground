@@ -22,6 +22,15 @@ async function sendMessage(chatId: number, text: string): Promise<void> {
   await tgGet("sendMessage", { chat_id: chatId, text });
 }
 
+async function downloadPhoto(fileId: string): Promise<{ base64: string; mimeType: "image/jpeg" }> {
+  const file = await tgGet<{ file_path: string }>("getFile", { file_id: fileId });
+  const res = await fetch(`https://api.telegram.org/file/bot${config.kidBotToken}/${file.file_path}`, {
+    signal: AbortSignal.timeout(30_000),
+  });
+  const buffer = await res.arrayBuffer();
+  return { base64: Buffer.from(buffer).toString("base64"), mimeType: "image/jpeg" };
+}
+
 const conversationHistory: Anthropic.Messages.MessageParam[] = [];
 let pendingGameBuild: string | null = null;
 
@@ -44,7 +53,12 @@ function flagsMessage(text: string): boolean {
   return alarmPhrases.some((p) => lower.includes(p));
 }
 
-async function handleMessage(chatId: number, fromId: number, text: string): Promise<void> {
+async function handleMessage(
+  chatId: number,
+  fromId: number,
+  text: string,
+  image?: { base64: string; mimeType: "image/jpeg" }
+): Promise<void> {
   if (fromId !== config.sonTelegramId) {
     console.log(`Ignored message from unknown sender ${fromId}. Add them to SON_TELEGRAM_ID if intended.`);
     return;
@@ -82,10 +96,19 @@ async function handleMessage(chatId: number, fromId: number, text: string): Prom
     }
   }
 
-  conversationHistory.push({ role: "user", content: text });
+  // Build the user content — vision block + text if image present
+  const userContent: Anthropic.Messages.MessageParam["content"] = image
+    ? [
+        { type: "image", source: { type: "base64", media_type: image.mimeType, data: image.base64 } },
+        { type: "text", text: text || "What do you see in this picture?" },
+      ]
+    : text;
+
+  // Store text-only summary in history (base64 images are too large to accumulate)
+  const historyText = image ? `[${config.sonName} sent a photo${text ? `: "${text}"` : ""}]` : text;
+  conversationHistory.push({ role: "user", content: historyText });
 
   if (isFrustrated(text)) {
-    // Inject a context note for Claude (not shown to kid)
     conversationHistory.push({
       role: "user",
       content: `[Guardian note: ${config.sonName} seems frustrated. Please respond with extra warmth, slow down, and offer to try something simpler or take a break.]`,
@@ -93,12 +116,17 @@ async function handleMessage(chatId: number, fromId: number, text: string): Prom
   }
 
   const cappedHistory = conversationHistory.slice(-40);
+  // Replace last entry with actual content (image or text) for this API call only
+  const messagesForApi = [
+    ...cappedHistory.slice(0, -1),
+    { role: "user" as const, content: userContent },
+  ];
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 512,
     system: getGuardianSystemPrompt(config.sonName),
-    messages: cappedHistory,
+    messages: messagesForApi,
   });
 
   if (!response.content.length || response.content[0].type !== "text") {
@@ -126,6 +154,8 @@ type TelegramUpdate = {
     from: { id: number };
     chat: { id: number };
     text?: string;
+    caption?: string;
+    photo?: Array<{ file_id: string; width: number; height: number }>;
   };
 };
 
@@ -145,9 +175,22 @@ async function pollTelegram(): Promise<void> {
       for (const update of updates) {
         offset = update.update_id + 1;
         const msg = update.message;
-        if (!msg?.text) continue;
-        console.log(`📨 [${msg.from.id}]: ${msg.text}`);
-        await handleMessage(msg.chat.id, msg.from.id, msg.text).catch((err) =>
+        if (!msg?.text && !msg?.photo) continue;
+
+        let image: { base64: string; mimeType: "image/jpeg" } | undefined;
+        if (msg.photo?.length) {
+          const largest = msg.photo[msg.photo.length - 1];
+          console.log(`📷 [${msg.from.id}]: photo${msg.caption ? ` — "${msg.caption}"` : ""}`);
+          image = await downloadPhoto(largest.file_id).catch((err) => {
+            console.error("Failed to download photo:", err);
+            return undefined;
+          });
+        } else {
+          console.log(`📨 [${msg.from.id}]: ${msg.text}`);
+        }
+
+        const text = msg.text ?? msg.caption ?? "";
+        await handleMessage(msg.chat.id, msg.from.id, text, image).catch((err) =>
           console.error("Error handling message:", err)
         );
       }
