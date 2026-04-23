@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Sokoban 🐱</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #1a0a2e;
+  color: #fff;
+  font-family: system-ui, sans-serif;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ── HUD ── */
+#hud {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #2a0f4a;
+  padding: 10px 16px;
+  font-size: 15px;
+  flex-shrink: 0;
+  gap: 8px;
+}
+#hud-level  { font-weight: bold; white-space: nowrap; }
+#hud-flavor { flex: 1; text-align: center; font-size: 14px; color: #cca8ff; }
+#hud-moves  { white-space: nowrap; }
+
+/* ── Board wrapper (auto-follow container) ── */
+#board-wrap {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Board grid ── */
+#board {
+  position: absolute;
+  display: grid;
+  /* grid-template-columns set dynamically via JS */
+  gap: 2px;
+  will-change: transform;
+  transition: transform 0.08s ease-out;
+}
+
+/* ── Individual cells ── */
+.cell {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  border-radius: 6px;
+  line-height: 1;
+}
+.cell-wall   { background: #3a1a5a; }
+.cell-floor  { background: #1e1040; }
+.cell-target { background: #2a1a50; outline: 2px solid #ffd700; outline-offset: -3px; border-radius: 6px; }
+.cell-outside { background: transparent; }
+
+/* ── Controls bar ── */
+#controls {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #2a0f4a;
+  flex-shrink: 0;
+}
+#controls button {
+  flex: 1;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 6px;
+  font-size: 15px;
+  font-weight: bold;
+  cursor: pointer;
+  touch-action: manipulation;
+  min-height: 48px;
+}
+#btn-undo    { background: #c0392b; color: #fff; }
+#btn-restart { background: #555; color: #fff; }
+#btn-levels  { background: #555; color: #fff; }
+#btn-undo:active, #btn-restart:active, #btn-levels:active { opacity: 0.75; }
+
+/* ── Win overlay ── */
+#win-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.82);
+  z-index: 100;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  text-align: center;
+  padding: 24px;
+}
+#win-overlay.show { display: flex; }
+#win-title  { font-size: 36px; }
+#win-msg    { font-size: 22px; font-weight: bold; }
+#win-sub    { font-size: 16px; color: #cca8ff; }
+#win-btn {
+  background: #7c3aed;
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  padding: 16px 36px;
+  font-size: 20px;
+  font-weight: bold;
+  cursor: pointer;
+  min-width: 200px;
+  touch-action: manipulation;
+  margin-top: 8px;
+}
+#win-btn:active { opacity: 0.8; }
+
+/* ── Level select overlay ── */
+#level-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.88);
+  z-index: 100;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px;
+  overflow-y: auto;
+  gap: 16px;
+}
+#level-overlay.show { display: flex; }
+#level-overlay h2   { font-size: 24px; }
+#level-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  width: 100%;
+  max-width: 360px;
+}
+.lvl-btn {
+  aspect-ratio: 1;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  touch-action: manipulation;
+  min-height: 64px;
+}
+.lvl-btn.done    { background: #1e6b3a; color: #fff; }
+.lvl-btn.current { background: #7c3aed; color: #fff; }
+.lvl-btn.locked  { background: #333; color: #666; cursor: default; }
+.lvl-btn .lvl-num { font-size: 18px; }
+#level-close {
+  background: #555; color: #fff; border: none;
+  border-radius: 10px; padding: 12px 32px;
+  font-size: 16px; cursor: pointer; touch-action: manipulation;
+}
+</style>
+</head>
+<body>
+
+<!-- HUD -->
+<div id="hud">
+  <span id="hud-level">Level 1/12</span>
+  <span id="hud-flavor">🐱 Find the fish!</span>
+  <span id="hud-moves">Moves: 0</span>
+</div>
+
+<!-- Board -->
+<div id="board-wrap">
+  <div id="board"></div>
+</div>
+
+<!-- Controls -->
+<div id="controls">
+  <button id="btn-undo">↩ Undo</button>
+  <button id="btn-restart">🔄 Restart</button>
+  <button id="btn-levels">📋 Levels</button>
+</div>
+
+<!-- Win overlay -->
+<div id="win-overlay">
+  <div id="win-title">🎉</div>
+  <div id="win-msg">Nice one!</div>
+  <div id="win-sub">You did it in <span id="win-moves">0</span> moves!</div>
+  <button id="win-btn">Next Level →</button>
+</div>
+
+<!-- Level select overlay -->
+<div id="level-overlay">
+  <h2>📋 Choose a Level</h2>
+  <div id="level-grid"></div>
+  <button id="level-close">Close</button>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+// ── Placeholder: JS will be filled in subsequent tasks ──
+
+}());
+</script>
+</body>
+</html>
