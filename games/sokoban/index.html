@@ -530,8 +530,28 @@ function tryMove(dr, dc) {
 
 // ── Show win overlay ──
 function showWinScreen() {
-  document.getElementById('win-moves').textContent = moves;
-  document.getElementById('win-overlay').classList.add('show');
+  var isLast = (currentLevelIdx === LEVELS.length - 1);
+  var overlay = document.getElementById('win-overlay');
+  var title   = document.getElementById('win-title');
+  var msg     = document.getElementById('win-msg');
+  var movesEl = document.getElementById('win-moves');
+  var btn     = document.getElementById('win-btn');
+
+  title.textContent   = isLast ? '🏆' : '🎉';
+  msg.textContent     = isLast ? "You're a Sokoban master! Amazing!" : 'Nice one! Ready for the next?';
+  movesEl.textContent = moves;
+  btn.textContent     = isLast ? '🔁 Play Again' : 'Next Level →';
+
+  overlay.classList.add('show');
+
+  btn.onclick = function() {
+    overlay.classList.remove('show');
+    if (isLast) {
+      loadLevel(0);
+    } else {
+      loadLevel(currentLevelIdx + 1);
+    }
+  };
 }
 
 // ── Undo last move ──
