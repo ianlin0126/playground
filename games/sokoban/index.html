@@ -323,6 +323,76 @@ var LEVELS = [
           "##########"] }
 ];
 
+// ── State ──
+var level;      // { rows, cols, walls, targets, boxes, playerRow, playerCol }
+var undoStack;  // array of { playerRow, playerCol, boxes }
+var moves;      // integer
+var won;        // boolean
+var currentLevelIdx; // 0-based index into LEVELS
+var progress;   // array of booleans [false x12], true = completed
+
+var CELL = 46;  // cell size px (44 + 2px gap)
+var MAX_UNDO = 200;
+
+// ── Parse a level grid array into working state ──
+function parseLevel(levelDef) {
+  var grid = levelDef.grid;
+  var rows = grid.length;
+  var cols = grid[0].length;
+  var walls   = {};
+  var targets = {};
+  var boxes   = [];
+  var playerRow = 0, playerCol = 0;
+
+  for (var r = 0; r < rows; r++) {
+    for (var c = 0; c < cols; c++) {
+      var ch = grid[r][c];
+      var key = r + ',' + c;
+      if (ch === '#')             walls[key]   = true;
+      if (ch === 'X' || ch === '*' || ch === '+') targets[key] = true;
+      if (ch === '$' || ch === '*') boxes.push([r, c]);
+      if (ch === '@' || ch === '+') { playerRow = r; playerCol = c; }
+      // '.' and ' ' are plain floor — no action needed
+    }
+  }
+  return { rows: rows, cols: cols, walls: walls, targets: targets,
+           boxes: boxes, playerRow: playerRow, playerCol: playerCol };
+}
+
+// ── Load level by 0-based index ──
+function loadLevel(idx) {
+  currentLevelIdx = idx;
+  level = parseLevel(LEVELS[idx]);
+  undoStack = [];
+  moves = 0;
+  won = false;
+  render();
+  updateHUD();
+}
+
+// ── Load saved progress or start fresh ──
+function initProgress() {
+  try {
+    var saved = localStorage.getItem('sokoban_progress');
+    progress = saved ? JSON.parse(saved) : new Array(LEVELS.length).fill(false);
+    if (progress.length !== LEVELS.length) progress = new Array(LEVELS.length).fill(false);
+  } catch (e) {
+    progress = new Array(LEVELS.length).fill(false);
+  }
+}
+
+function saveProgress() {
+  try { localStorage.setItem('sokoban_progress', JSON.stringify(progress)); } catch (e) {}
+}
+
+// ── Stub functions (replaced in later tasks) ──
+function render() { /* stub — replaced in Task 4 */ }
+function updateHUD() { /* stub — replaced in Task 4 */ }
+
+// ── Boot ──
+initProgress();
+loadLevel(0);
+
 }());
 </script>
 </body>
