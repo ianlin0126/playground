@@ -396,9 +396,74 @@ function saveProgress() {
   try { localStorage.setItem('sokoban_progress', JSON.stringify(progress)); } catch (e) {}
 }
 
-// ── Stub functions (replaced in later tasks) ──
-function render() { /* stub — replaced in Task 4 */ }
-function updateHUD() { /* stub — replaced in Task 4 */ }
+// ── Render the board ──
+function render() {
+  var boardEl = document.getElementById('board');
+
+  boardEl.style.gridTemplateColumns = 'repeat(' + level.cols + ', 44px)';
+
+  boardEl.innerHTML = '';
+  for (var r = 0; r < level.rows; r++) {
+    for (var c = 0; c < level.cols; c++) {
+      var key = r + ',' + c;
+      var cell = document.createElement('div');
+      cell.className = 'cell';
+
+      var isWall   = level.walls[key];
+      var isTarget = level.targets[key];
+      var isPlayer = (r === level.playerRow && c === level.playerCol);
+      var isBox    = false;
+      for (var i = 0; i < level.boxes.length; i++) {
+        if (level.boxes[i][0] === r && level.boxes[i][1] === c) { isBox = true; break; }
+      }
+
+      if (isWall) {
+        cell.classList.add('cell-wall');
+        cell.textContent = '🧱';
+      } else if (isPlayer) {
+        cell.classList.add(isTarget ? 'cell-target' : 'cell-floor');
+        cell.textContent = '🐱';
+      } else if (isBox) {
+        cell.classList.add(isTarget ? 'cell-target' : 'cell-floor');
+        cell.textContent = isTarget ? '✅' : '📦';
+      } else if (isTarget) {
+        cell.classList.add('cell-target');
+        cell.textContent = '🐟';
+      } else {
+        cell.classList.add('cell-floor');
+      }
+
+      boardEl.appendChild(cell);
+    }
+  }
+
+  centerOnPlayer();
+}
+
+// ── Center camera on player ──
+function centerOnPlayer() {
+  var wrap  = document.getElementById('board-wrap');
+  var board = document.getElementById('board');
+  var wrapW = wrap.clientWidth;
+  var wrapH = wrap.clientHeight;
+
+  var tx = Math.round(wrapW / 2 - level.playerCol * CELL - CELL / 2);
+  var ty = Math.round(wrapH / 2 - level.playerRow * CELL - CELL / 2);
+
+  board.style.transform = 'translate(' + tx + 'px, ' + ty + 'px)';
+}
+
+// ── Update HUD ──
+function updateHUD() {
+  var def = LEVELS[currentLevelIdx];
+  document.getElementById('hud-level').textContent  = 'Level ' + def.id + '/12';
+  document.getElementById('hud-moves').textContent  = 'Moves: ' + moves;
+  var flavors = [
+    '🐱 Find the fish!', '🐟 Push the box!', '🤔 Think carefully!',
+    '💪 You can do it!', '🧠 Almost there!', '⭐ Great going!'
+  ];
+  document.getElementById('hud-flavor').textContent = flavors[currentLevelIdx % flavors.length];
+}
 
 // ── Boot ──
 initProgress();
