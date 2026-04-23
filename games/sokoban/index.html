@@ -456,7 +456,7 @@ function centerOnPlayer() {
 // ── Update HUD ──
 function updateHUD() {
   var def = LEVELS[currentLevelIdx];
-  document.getElementById('hud-level').textContent  = 'Level ' + def.id + '/12';
+  document.getElementById('hud-level').textContent  = 'Level ' + def.id + '/' + LEVELS.length;
   document.getElementById('hud-moves').textContent  = 'Moves: ' + moves;
   var flavors = [
     '🐱 Find the fish!', '🐟 Push the box!', '🤔 Think carefully!',
