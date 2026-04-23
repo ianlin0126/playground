@@ -555,6 +555,32 @@ function restart() {
 document.getElementById('btn-undo').addEventListener('click', undo);
 document.getElementById('btn-restart').addEventListener('click', restart);
 
+// ── Swipe controls ──
+var touchStartX = null, touchStartY = null;
+var boardWrap = document.getElementById('board-wrap');
+
+boardWrap.addEventListener('touchstart', function(e) {
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+}, { passive: true });
+
+boardWrap.addEventListener('touchend', function(e) {
+  if (touchStartX === null) return;
+  var dx = e.changedTouches[0].clientX - touchStartX;
+  var dy = e.changedTouches[0].clientY - touchStartY;
+  touchStartX = null;
+  touchStartY = null;
+
+  var minSwipe = 20;
+  if (Math.abs(dx) < minSwipe && Math.abs(dy) < minSwipe) return;
+
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    tryMove(0, dx > 0 ? 1 : -1);
+  } else {
+    tryMove(dy > 0 ? 1 : -1, 0);
+  }
+}, { passive: true });
+
 // ── Keyboard handler ──
 document.addEventListener('keydown', function(e) {
   var handled = false;
