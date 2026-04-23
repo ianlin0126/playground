@@ -534,6 +534,27 @@ function showWinScreen() {
   document.getElementById('win-overlay').classList.add('show');
 }
 
+// ── Undo last move ──
+function undo() {
+  if (won || undoStack.length === 0) return;
+  var snap = undoStack.pop();
+  level.playerRow = snap.playerRow;
+  level.playerCol = snap.playerCol;
+  level.boxes = snap.boxes.map(function(b) { return [b[0], b[1]]; });
+  moves = Math.max(0, moves - 1);
+  render();
+  updateHUD();
+}
+
+// ── Restart current level ──
+function restart() {
+  loadLevel(currentLevelIdx);
+}
+
+// ── Wire control buttons ──
+document.getElementById('btn-undo').addEventListener('click', undo);
+document.getElementById('btn-restart').addEventListener('click', restart);
+
 // ── Keyboard handler ──
 document.addEventListener('keydown', function(e) {
   var handled = false;
