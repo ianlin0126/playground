@@ -554,6 +554,57 @@ function showWinScreen() {
   };
 }
 
+// ── Build level select overlay ──
+function buildLevelSelect() {
+  var grid = document.getElementById('level-grid');
+  grid.innerHTML = '';
+  for (var i = 0; i < LEVELS.length; i++) {
+    var btn = document.createElement('button');
+    btn.className = 'lvl-btn';
+    var numSpan  = document.createElement('span');
+    numSpan.className = 'lvl-num';
+    numSpan.textContent = LEVELS[i].id;
+    var iconSpan = document.createElement('span');
+
+    if (progress[i]) {
+      btn.classList.add('done');
+      iconSpan.textContent = '✅';
+    } else if (i === currentLevelIdx) {
+      btn.classList.add('current');
+      iconSpan.textContent = '🐱';
+    } else if (i === 0 || progress[i - 1]) {
+      iconSpan.textContent = '';
+    } else {
+      btn.classList.add('locked');
+      iconSpan.textContent = '🔒';
+      btn.disabled = true;
+    }
+
+    btn.appendChild(numSpan);
+    btn.appendChild(iconSpan);
+
+    if (!btn.disabled) {
+      (function(idx) {
+        btn.addEventListener('click', function() {
+          document.getElementById('level-overlay').classList.remove('show');
+          loadLevel(idx);
+        });
+      }(i));
+    }
+
+    grid.appendChild(btn);
+  }
+}
+
+// ── Wire level select and close buttons ──
+document.getElementById('btn-levels').addEventListener('click', function() {
+  buildLevelSelect();
+  document.getElementById('level-overlay').classList.add('show');
+});
+document.getElementById('level-close').addEventListener('click', function() {
+  document.getElementById('level-overlay').classList.remove('show');
+});
+
 // ── Undo last move ──
 function undo() {
   if (won || undoStack.length === 0) return;
