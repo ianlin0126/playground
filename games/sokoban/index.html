@@ -482,8 +482,8 @@ function tryMove(dr, dc) {
   var nc = level.playerCol + dc;
   var nKey = nr + ',' + nc;
 
-  if (level.walls[nKey]) return;
   if (nr < 0 || nr >= level.rows || nc < 0 || nc >= level.cols) return;
+  if (level.walls[nKey]) return;
 
   var boxIdx = -1;
   for (var i = 0; i < level.boxes.length; i++) {
@@ -494,27 +494,23 @@ function tryMove(dr, dc) {
     var br = nr + dr;
     var bc = nc + dc;
     var bKey = br + ',' + bc;
-    if (level.walls[bKey]) return;
     if (br < 0 || br >= level.rows || bc < 0 || bc >= level.cols) return;
+    if (level.walls[bKey]) return;
     for (var j = 0; j < level.boxes.length; j++) {
       if (j !== boxIdx && level.boxes[j][0] === br && level.boxes[j][1] === bc) return;
     }
-    var snapshot = {
-      playerRow: level.playerRow, playerCol: level.playerCol,
-      boxes: level.boxes.map(function(b) { return [b[0], b[1]]; })
-    };
-    if (undoStack.length >= MAX_UNDO) undoStack.shift();
-    undoStack.push(snapshot);
+  }
 
-    level.boxes[boxIdx][0] = br;
-    level.boxes[boxIdx][1] = bc;
-  } else {
-    var snapshot = {
-      playerRow: level.playerRow, playerCol: level.playerCol,
-      boxes: level.boxes.map(function(b) { return [b[0], b[1]]; })
-    };
-    if (undoStack.length >= MAX_UNDO) undoStack.shift();
-    undoStack.push(snapshot);
+  var snapshot = {
+    playerRow: level.playerRow, playerCol: level.playerCol,
+    boxes: level.boxes.map(function(b) { return [b[0], b[1]]; })
+  };
+  if (undoStack.length >= MAX_UNDO) undoStack.shift();
+  undoStack.push(snapshot);
+
+  if (boxIdx >= 0) {
+    level.boxes[boxIdx][0] = nr + dr;
+    level.boxes[boxIdx][1] = nc + dc;
   }
 
   level.playerRow = nr;
@@ -540,10 +536,12 @@ function showWinScreen() {
 
 // ── Keyboard handler ──
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'ArrowUp'    || e.key === 'w' || e.key === 'W') tryMove(-1,  0);
-  if (e.key === 'ArrowDown'  || e.key === 's' || e.key === 'S') tryMove( 1,  0);
-  if (e.key === 'ArrowLeft'  || e.key === 'a' || e.key === 'A') tryMove( 0, -1);
-  if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') tryMove( 0,  1);
+  var handled = false;
+  if (e.key === 'ArrowUp'    || e.key === 'w' || e.key === 'W') { tryMove(-1,  0); handled = true; }
+  if (e.key === 'ArrowDown'  || e.key === 's' || e.key === 'S') { tryMove( 1,  0); handled = true; }
+  if (e.key === 'ArrowLeft'  || e.key === 'a' || e.key === 'A') { tryMove( 0, -1); handled = true; }
+  if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { tryMove( 0,  1); handled = true; }
+  if (handled) e.preventDefault();
 });
 
 // ── Boot ──
