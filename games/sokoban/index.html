@@ -338,7 +338,10 @@ var MAX_UNDO = 200;
 function parseLevel(levelDef) {
   var grid = levelDef.grid;
   var rows = grid.length;
-  var cols = grid[0].length;
+  var cols = 0;
+  for (var rr = 0; rr < rows; rr++) {
+    if (grid[rr].length > cols) cols = grid[rr].length;
+  }
   var walls   = {};
   var targets = {};
   var boxes   = [];
@@ -361,6 +364,7 @@ function parseLevel(levelDef) {
 
 // ── Load level by 0-based index ──
 function loadLevel(idx) {
+  if (idx < 0 || idx >= LEVELS.length) return;
   currentLevelIdx = idx;
   level = parseLevel(LEVELS[idx]);
   undoStack = [];
@@ -370,14 +374,21 @@ function loadLevel(idx) {
   updateHUD();
 }
 
+// ── Helper to create array of false values (ES5 safe) ──
+function makeFalseArray(len) {
+  var arr = [];
+  for (var i = 0; i < len; i++) arr.push(false);
+  return arr;
+}
+
 // ── Load saved progress or start fresh ──
 function initProgress() {
   try {
     var saved = localStorage.getItem('sokoban_progress');
-    progress = saved ? JSON.parse(saved) : new Array(LEVELS.length).fill(false);
-    if (progress.length !== LEVELS.length) progress = new Array(LEVELS.length).fill(false);
+    progress = saved ? JSON.parse(saved) : makeFalseArray(LEVELS.length);
+    if (progress.length !== LEVELS.length) progress = makeFalseArray(LEVELS.length);
   } catch (e) {
-    progress = new Array(LEVELS.length).fill(false);
+    progress = makeFalseArray(LEVELS.length);
   }
 }
 
