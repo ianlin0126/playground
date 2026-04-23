@@ -12,6 +12,7 @@ body {
   background: #1a0a2e;
   color: #fff;
   font-family: system-ui, sans-serif;
+  height: 100vh;
   height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -149,6 +150,7 @@ body {
   max-width: 360px;
 }
 .lvl-btn {
+  height: 64px;
   aspect-ratio: 1;
   border: none;
   border-radius: 12px;
@@ -503,7 +505,8 @@ function tryMove(dr, dc) {
 
   var snapshot = {
     playerRow: level.playerRow, playerCol: level.playerCol,
-    boxes: level.boxes.map(function(b) { return [b[0], b[1]]; })
+    boxes: level.boxes.map(function(b) { return [b[0], b[1]]; }),
+    moves: moves
   };
   if (undoStack.length >= MAX_UNDO) undoStack.shift();
   undoStack.push(snapshot);
@@ -543,15 +546,6 @@ function showWinScreen() {
   btn.textContent     = isLast ? '🔁 Play Again' : 'Next Level →';
 
   overlay.classList.add('show');
-
-  btn.onclick = function() {
-    overlay.classList.remove('show');
-    if (isLast) {
-      loadLevel(0);
-    } else {
-      loadLevel(currentLevelIdx + 1);
-    }
-  };
 }
 
 // ── Build level select overlay ──
@@ -612,7 +606,7 @@ function undo() {
   level.playerRow = snap.playerRow;
   level.playerCol = snap.playerCol;
   level.boxes = snap.boxes.map(function(b) { return [b[0], b[1]]; });
-  moves = Math.max(0, moves - 1);
+  moves = snap.moves;
   render();
   updateHUD();
 }
@@ -663,6 +657,12 @@ document.addEventListener('keydown', function(e) {
 });
 
 // ── Boot ──
+document.getElementById('win-btn').addEventListener('click', function() {
+  document.getElementById('win-overlay').classList.remove('show');
+  var isLast = (currentLevelIdx === LEVELS.length - 1);
+  loadLevel(isLast ? 0 : currentLevelIdx + 1);
+});
+
 initProgress();
 loadLevel(0);
 
