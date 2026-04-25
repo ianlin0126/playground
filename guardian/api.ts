@@ -163,6 +163,17 @@ async function handleCheckClaude(): Promise<Response> {
   return json({ installed: true, authenticated: versionProc.exitCode === 0 });
 }
 
+async function handleVerifyApiKey(): Promise<Response> {
+  if (!config.anthropicApiKey) return json({ ok: false, error: "No API key found in .env" });
+  try {
+    const sdk = new Anthropic({ apiKey: config.anthropicApiKey, maxRetries: 0 });
+    await sdk.models.list();
+    return json({ ok: true });
+  } catch {
+    return json({ ok: false, error: "API key is invalid or could not reach Anthropic" });
+  }
+}
+
 async function handleOpenClaude(): Promise<Response> {
   const dir = config.playgroundDir.replace(/'/g, "'\\''");
   Bun.spawn(["osascript", "-e",
@@ -194,6 +205,7 @@ export async function handleApiRequest(req: Request, server: Bun.Server): Promis
   if (path === "/api/setup/status" && method === "GET") return handleSetupStatus();
   if (path === "/api/setup/telegram-id" && method === "GET") return handleSetupTelegramId();
   if (path === "/api/setup/check-claude" && method === "GET") return handleCheckClaude();
+  if (path === "/api/setup/verify-api-key" && method === "GET") return handleVerifyApiKey();
   if (path === "/api/open-claude" && method === "POST") return handleOpenClaude();
 
   return new Response("Not found", { status: 404 });

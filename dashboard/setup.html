@@ -43,14 +43,18 @@
     <div class="step" id="step-3">
       <h1>Anthropic API Key</h1>
       <p class="subtitle">The guardian uses the Claude API to chat with your kid and build games. Paste your API key below.</p>
-      <div class="wizard-field">
+      <p style="font-size:12px;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;line-height:1.6;margin-bottom:16px">
+        🔒 Your API key is saved <strong>only</strong> to the local <code style="background:#e2e8f0;padding:1px 5px;border-radius:4px">.env</code> file on this machine and is never transmitted anywhere else. You can also add it manually: open <code style="background:#e2e8f0;padding:1px 5px;border-radius:4px">.env</code> in the playground directory and add <code style="background:#e2e8f0;padding:1px 5px;border-radius:4px">ANTHROPIC_API_KEY=your-key-here</code>
+      </p>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#475569;margin-bottom:18px;cursor:pointer">
+        <input type="checkbox" id="apikey-manual-toggle" onchange="toggleApiKeyManual(this.checked)" style="width:16px;height:16px;accent-color:#6366f1">
+        I've already added the API key to <code style="background:#e2e8f0;padding:1px 5px;border-radius:4px">.env</code> manually
+      </label>
+      <div id="apikey-field" class="wizard-field">
         <label>API Key</label>
         <input type="password" id="apikey-input" placeholder="sk-ant-api03-..." autocomplete="off">
         <div class="hint">Get yours at <a href="https://console.anthropic.com/keys" target="_blank">console.anthropic.com/keys</a></div>
       </div>
-      <p style="font-size:12px;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;line-height:1.6;margin-bottom:4px">
-        🔒 Your API key is saved <strong>only</strong> to the local <code style="background:#e2e8f0;padding:1px 5px;border-radius:4px">.env</code> file on this machine and is never transmitted anywhere else. You can also skip this step and add it manually: open <code style="background:#e2e8f0;padding:1px 5px;border-radius:4px">.env</code> in the playground directory and add the line <code style="background:#e2e8f0;padding:1px 5px;border-radius:4px">ANTHROPIC_API_KEY=your-key-here</code>
-      </p>
       <div class="error-msg" id="apikey-error"></div>
       <div class="wizard-actions">
         <button class="btn btn-ghost" onclick="goTo(2)">← Back</button>
@@ -177,23 +181,35 @@ async function checkClaude() {
   }
 }
 
+function toggleApiKeyManual(on) {
+  document.getElementById('apikey-field').style.display = on ? 'none' : 'block';
+  document.getElementById('apikey-btn').textContent = on ? 'Verify key in .env →' : 'Validate →';
+  document.getElementById('apikey-error').textContent = '';
+}
+
 async function validateApiKey() {
-  const key = document.getElementById('apikey-input').value.trim();
   const btn = document.getElementById('apikey-btn');
   const err = document.getElementById('apikey-error');
-  if (!key) { err.textContent = 'Please enter your API key.'; return; }
+  const manual = document.getElementById('apikey-manual-toggle').checked;
   btn.disabled = true;
-  btn.textContent = 'Validating...';
+  btn.textContent = 'Verifying...';
   err.textContent = '';
 
-  const res = await fetch('/api/config', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ANTHROPIC_API_KEY: key }),
-  }).then(r => r.json()).catch(() => ({ error: 'Network error' }));
+  let res;
+  if (manual) {
+    res = await fetch('/api/setup/verify-api-key').then(r => r.json()).catch(() => ({ error: 'Network error' }));
+  } else {
+    const key = document.getElementById('apikey-input').value.trim();
+    if (!key) { err.textContent = 'Please enter your API key.'; btn.disabled = false; btn.textContent = 'Validate →'; return; }
+    res = await fetch('/api/config', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ANTHROPIC_API_KEY: key }),
+    }).then(r => r.json()).catch(() => ({ error: 'Network error' }));
+  }
 
   btn.disabled = false;
-  btn.textContent = 'Validate →';
+  btn.textContent = manual ? 'Verify key in .env →' : 'Validate →';
   if (res.ok) { goTo(4); }
   else { err.textContent = res.error || 'Validation failed.'; }
 }
