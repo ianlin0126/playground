@@ -1,0 +1,250 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { config } from "./config";
+import { insertTurn } from "./db";
+import { getGuardianSystemPrompt } from "./prompts";
+import { buildGame } from "./builder";
+
+// ── State ─────────────────────────────────────────────────────────────────
+
+export type TelegramState = {
+  status: "running" | "stopped" | "error";
+  startedAt: Date | null;
+  error: string | null;
+};
+
+export const state: TelegramState = {
+  status: "stopped",
+  startedAt: null,
+  error: null,
+};
+
+let _running = false;
+let _stopSignal = false;
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+const FRUSTRATION_SIGNALS = ["i hate", "this is dumb", "ughhh", "forget it", "this doesnt work", "stupid"];
+const BUILD_CONFIRMATIONS = ["yes", "yeah", "yep", "yup", "ok", "okay", "sure", "do it", "build it", "make it", "lets go", "let's go"];
+
+function isFrustrated(text: string): boolean {
+  const lower = text.toLowerCase();
+  return FRUSTRATION_SIGNALS.some((s) => lower.includes(s));
+}
+
+function isConfirmation(text: string): boolean {
+  const lower = text.toLowerCase().trim();
+  return BUILD_CONFIRMATIONS.some((c) => lower.includes(c));
+}
+
+function flagsMessage(text: string): boolean {
+  const lower = text.toLowerCase();
+  const alarmPhrases = ["where do you live", "what is your address", "send me money", "phone number", "password", "credit card"];
+  return alarmPhrases.some((p) => lower.includes(p));
+}
+
+function tgBase(): string {
+  return `https://api.telegram.org/bot${config.kidBotToken}`;
+}
+
+async function tgGet<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+  const url = new URL(`${tgBase()}/${method}`);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(45_000) });
+  const json = (await res.json()) as { ok: boolean; result: T };
+  if (!json.ok) throw new Error(`Telegram ${method} failed: ${JSON.stringify(json)}`);
+  return json.result;
+}
+
+async function sendMessage(chatId: number, text: string): Promise<void> {
+  await tgGet("sendMessage", { chat_id: chatId, text });
+}
+
+async function downloadPhoto(fileId: string): Promise<{ base64: string; mimeType: "image/jpeg" }> {
+  const file = await tgGet<{ file_path: string }>("getFile", { file_id: fileId });
+  const res = await fetch(`https://api.telegram.org/file/bot${config.kidBotToken}/${file.file_path}`, {
+    signal: AbortSignal.timeout(30_000),
+  });
+  const buffer = await res.arrayBuffer();
+  return { base64: Buffer.from(buffer).toString("base64"), mimeType: "image/jpeg" };
+}
+
+// ── Conversation loop ─────────────────────────────────────────────────────
+
+const conversationHistory: Anthropic.Messages.MessageParam[] = [];
+let pendingGameBuild: { gameName: string; revisionRequest?: string } | null = null;
+
+async function handleMessage(
+  anthropic: Anthropic,
+  chatId: number,
+  fromId: number,
+  text: string,
+  image?: { base64: string; mimeType: "image/jpeg" }
+): Promise<void> {
+  if (fromId !== config.sonTelegramId) {
+    console.log(`Ignored message from unknown sender ${fromId}.`);
+    return;
+  }
+
+  const flagged = flagsMessage(text);
+  insertTurn("kid", text, flagged);
+  if (flagged) console.warn(`⚠️  FLAGGED message: "${text}"`);
+
+  if (pendingGameBuild !== null) {
+    if (isConfirmation(text)) {
+      const { gameName, revisionRequest } = pendingGameBuild;
+      pendingGameBuild = null;
+      await sendMessage(chatId, "Ok let me make it!! Give me a sec... 🔨⭐");
+      insertTurn("guardian", "Ok let me make it!! Give me a sec... 🔨⭐");
+      try {
+        const recentContext = conversationHistory.slice(-10).map((m) => ({
+          role: m.role,
+          content: typeof m.content === "string" ? m.content : "[media]",
+        }));
+        const { url } = await buildGame(gameName, revisionRequest, (msg) => sendMessage(chatId, msg).catch(() => {}), recentContext);
+        const reply = `Here it is!! Open this on your tablet: ${url} 🎉`;
+        await sendMessage(chatId, reply);
+        insertTurn("guardian", reply);
+      } catch (err) {
+        console.error("Build failed:", err);
+        const reply = `Oops, something went a little wrong! 😅 Want to try again? Just say yes!`;
+        await sendMessage(chatId, reply);
+        insertTurn("guardian", reply);
+        pendingGameBuild = { gameName, revisionRequest };
+      }
+      return;
+    } else {
+      pendingGameBuild = null;
+      const cancelMsg = "No problem! 😊 What would you like to do?";
+      await sendMessage(chatId, cancelMsg);
+      insertTurn("guardian", cancelMsg);
+      return;
+    }
+  }
+
+  const userContent: Anthropic.Messages.MessageParam["content"] = image
+    ? [
+        { type: "image", source: { type: "base64", media_type: image.mimeType, data: image.base64 } },
+        { type: "text", text: text || "What do you see in this picture?" },
+      ]
+    : text;
+
+  const historyText = image ? `[${config.sonName} sent a photo${text ? `: "${text}"` : ""}]` : text;
+  conversationHistory.push({ role: "user", content: historyText });
+
+  if (isFrustrated(text)) {
+    conversationHistory.push({
+      role: "user",
+      content: `[Guardian note: ${config.sonName} seems frustrated. Please respond with extra warmth, slow down, and offer to try something simpler or take a break.]`,
+    });
+  }
+
+  const cappedHistory = conversationHistory.slice(-40);
+  const messagesForApi = [
+    ...cappedHistory.slice(0, -1),
+    { role: "user" as const, content: userContent },
+  ];
+
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 512,
+    system: getGuardianSystemPrompt(config.sonName),
+    messages: messagesForApi,
+  });
+
+  if (!response.content.length || response.content[0].type !== "text") {
+    console.error("Unexpected Claude response");
+    return;
+  }
+
+  const reply = response.content[0].text;
+  const tokenMatch = reply.match(/^GAME_NAME:\s*(.+)$/m);
+  if (tokenMatch) {
+    pendingGameBuild = { gameName: tokenMatch[1].trim(), revisionRequest: text || undefined };
+  }
+
+  const cleanReply = reply.replace(/^GAME_NAME:\s*.+\n?/m, "").trim();
+  conversationHistory.push({ role: "assistant", content: cleanReply });
+  insertTurn("guardian", cleanReply);
+  await sendMessage(chatId, cleanReply);
+}
+
+type TelegramUpdate = {
+  update_id: number;
+  message?: {
+    from: { id: number };
+    chat: { id: number };
+    text?: string;
+    caption?: string;
+    photo?: Array<{ file_id: string; width: number; height: number }>;
+  };
+};
+
+async function pollLoop(anthropic: Anthropic): Promise<void> {
+  let offset = 0;
+  console.log(`\n🤖 Guardian ready! Listening for ${config.sonName}...`);
+
+  while (!_stopSignal) {
+    try {
+      const updates = await tgGet<TelegramUpdate[]>("getUpdates", {
+        offset,
+        timeout: 30,
+        allowed_updates: ["message"],
+      });
+
+      for (const update of updates) {
+        if (_stopSignal) break;
+        offset = update.update_id + 1;
+        const msg = update.message;
+        if (!msg?.text && !msg?.photo) continue;
+
+        let image: { base64: string; mimeType: "image/jpeg" } | undefined;
+        if (msg.photo?.length) {
+          const largest = msg.photo[msg.photo.length - 1];
+          image = await downloadPhoto(largest.file_id).catch((err) => {
+            console.error("Failed to download photo:", err);
+            return undefined;
+          });
+        }
+
+        const text = msg.text ?? msg.caption ?? "";
+        await handleMessage(anthropic, msg.chat.id, msg.from.id, text, image).catch((err) =>
+          console.error("Error handling message:", err)
+        );
+      }
+    } catch (err) {
+      if (_stopSignal) break;
+      console.error("Polling error (retrying in 3s):", err);
+      await Bun.sleep(3000);
+    }
+  }
+}
+
+// ── Public API ─────────────────────────────────────────────────────────────
+
+export function start(): void {
+  if (_running) return;
+  _running = true;
+  _stopSignal = false;
+  state.status = "running";
+  state.startedAt = new Date();
+  state.error = null;
+
+  const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
+
+  pollLoop(anthropic)
+    .catch((err) => {
+      state.status = "error";
+      state.error = err instanceof Error ? err.message : String(err);
+      console.error("Telegram loop crashed:", err);
+    })
+    .finally(() => {
+      _running = false;
+      if (state.status === "running") state.status = "stopped";
+    });
+}
+
+export function stop(): void {
+  _stopSignal = true;
+  state.status = "stopped";
+  state.startedAt = null;
+}
