@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Playground Setup</title>
+  <link rel="stylesheet" href="/parent/style.css">
+</head>
+<body>
+<div class="wizard-shell">
+  <div class="wizard-card">
+    <div class="wizard-logo">🎮</div>
+    <div class="step-indicator" id="dots"></div>
+
+    <!-- Step 1: Welcome -->
+    <div class="step active" id="step-1">
+      <h1>Welcome to Playground!</h1>
+      <p class="subtitle">Let's get your AI-powered game studio ready. This takes about 5 minutes. You'll need a Claude Code account and a Telegram account.</p>
+      <div class="wizard-actions">
+        <button class="btn btn-primary" onclick="goTo(2)">Get started →</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Claude Code check -->
+    <div class="step" id="step-2">
+      <h1>Claude Code</h1>
+      <p class="subtitle">Playground uses Claude Code so you can build and fix games alongside your kid. Let's make sure it's ready.</p>
+      <div id="claude-badge" class="check-badge wait">Checking...</div>
+      <div id="claude-instructions" style="display:none" class="instructions">
+        <p style="margin-bottom:12px;color:#334155;">Claude Code is not installed or authenticated. Please:</p>
+        <ol>
+          <li>Install Claude Code: <a href="https://claude.ai/code" target="_blank">claude.ai/code</a></li>
+          <li>Run <code>claude login</code> in your Terminal</li>
+        </ol>
+      </div>
+      <div class="wizard-actions" style="margin-top:16px">
+        <button class="btn btn-ghost" onclick="checkClaude()">Check again</button>
+        <button class="btn btn-primary" id="claude-next" disabled onclick="goTo(3)">Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Anthropic API key -->
+    <div class="step" id="step-3">
+      <h1>Anthropic API Key</h1>
+      <p class="subtitle">The guardian uses the Claude API to chat with your kid and build games. Paste your API key below.</p>
+      <div class="wizard-field">
+        <label>API Key</label>
+        <input type="password" id="apikey-input" placeholder="sk-ant-api03-..." autocomplete="off">
+        <div class="hint">Get yours at <a href="https://console.anthropic.com/keys" target="_blank">console.anthropic.com/keys</a></div>
+      </div>
+      <div class="error-msg" id="apikey-error"></div>
+      <div class="wizard-actions">
+        <button class="btn btn-ghost" onclick="goTo(2)">← Back</button>
+        <button class="btn btn-primary" id="apikey-btn" onclick="validateApiKey()">Validate →</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Telegram bot token -->
+    <div class="step" id="step-4">
+      <h1>Telegram Bot</h1>
+      <p class="subtitle">Your kid will chat with the guardian through a Telegram bot you create. It only takes 2 minutes.</p>
+      <div class="instructions" style="margin-bottom:20px">
+        <ol>
+          <li>Open Telegram and search for <a href="https://t.me/BotFather" target="_blank">@BotFather</a></li>
+          <li>Send <code>/newbot</code> and follow the prompts</li>
+          <li>Copy the token BotFather gives you (looks like <code>1234567890:AAH...</code>)</li>
+        </ol>
+      </div>
+      <div class="wizard-field">
+        <label>Bot Token</label>
+        <input type="password" id="bottoken-input" placeholder="1234567890:AAH..." autocomplete="off">
+      </div>
+      <div class="error-msg" id="bottoken-error"></div>
+      <div class="wizard-actions">
+        <button class="btn btn-ghost" onclick="goTo(3)">← Back</button>
+        <button class="btn btn-primary" onclick="validateBotToken()">Validate →</button>
+      </div>
+    </div>
+
+    <!-- Step 5: Kid's Telegram ID -->
+    <div class="step" id="step-5">
+      <h1>Kid's Telegram</h1>
+      <p class="subtitle">Have your kid send any message to your new bot now. We'll detect their Telegram ID automatically.</p>
+      <div class="polling-indicator" id="polling-indicator">
+        <div class="spinner"></div>
+        <span>Waiting for a message from your kid...</span>
+      </div>
+      <div id="kid-found" style="display:none">
+        <div class="check-badge ok" id="kid-badge">✓ Found!</div>
+        <p style="font-size:13px;color:#334155;margin-top:8px">Telegram ID: <strong id="kid-id-display"></strong> · Name: <strong id="kid-name-display"></strong></p>
+      </div>
+      <div class="error-msg" id="telegram-id-error"></div>
+      <div class="wizard-actions">
+        <button class="btn btn-ghost" onclick="goTo(4)">← Back</button>
+        <button class="btn btn-primary" id="kid-next" disabled onclick="goTo(6)">Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 6: Kid's name -->
+    <div class="step" id="step-6">
+      <h1>What's your kid's name?</h1>
+      <p class="subtitle">The guardian will use this name when chatting with your kid.</p>
+      <div class="wizard-field">
+        <label>Name</label>
+        <input type="text" id="sonname-input" placeholder="e.g. Clive" autocomplete="given-name">
+      </div>
+      <div class="error-msg" id="sonname-error"></div>
+      <div class="wizard-actions">
+        <button class="btn btn-ghost" onclick="goTo(5)">← Back</button>
+        <button class="btn btn-primary" onclick="saveName()">Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 7: Done -->
+    <div class="step" id="step-7">
+      <h1>All set! 🎉</h1>
+      <p class="subtitle">The guardian is starting up. Your kid can now chat with it on Telegram. Open the game lobby URL on their tablet to play games.</p>
+      <div class="card" style="margin-bottom:20px">
+        <div class="stat-label">Game Lobby URL (share with kid's tablet)</div>
+        <div id="lobby-url" style="font-size:15px;font-weight:600;color:#6366f1;margin-top:6px;font-family:ui-monospace,monospace"></div>
+      </div>
+      <div class="wizard-actions">
+        <button class="btn btn-primary" onclick="window.location.href='/parent'">Go to Dashboard →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentStep = 1;
+const TOTAL_STEPS = 7;
+let detectedKidId = null;
+let pollTimer = null;
+
+function renderDots() {
+  const container = document.getElementById('dots');
+  container.innerHTML = '';
+  for (let i = 1; i <= TOTAL_STEPS; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'step-dot' + (i < currentStep ? ' done' : i === currentStep ? ' active' : '');
+    container.appendChild(dot);
+  }
+}
+
+function goTo(n) {
+  document.getElementById('step-' + currentStep).classList.remove('active');
+  currentStep = n;
+  document.getElementById('step-' + currentStep).classList.add('active');
+  renderDots();
+  if (n === 2) checkClaude();
+  if (n === 5) startPollingTelegramId();
+  if (n === 7) startGuardian();
+}
+
+async function checkClaude() {
+  const badge = document.getElementById('claude-badge');
+  const instructions = document.getElementById('claude-instructions');
+  const nextBtn = document.getElementById('claude-next');
+  badge.className = 'check-badge wait';
+  badge.textContent = 'Checking...';
+  instructions.style.display = 'none';
+  nextBtn.disabled = true;
+
+  const res = await fetch('/api/setup/check-claude').then(r => r.json()).catch(() => ({ installed: false }));
+  if (res.installed && res.authenticated) {
+    badge.className = 'check-badge ok';
+    badge.textContent = '✓ Claude Code is ready';
+    nextBtn.disabled = false;
+  } else {
+    badge.className = 'check-badge fail';
+    badge.textContent = res.installed ? '✗ Claude Code is not authenticated' : '✗ Claude Code is not installed';
+    instructions.style.display = 'block';
+  }
+}
+
+async function validateApiKey() {
+  const key = document.getElementById('apikey-input').value.trim();
+  const btn = document.getElementById('apikey-btn');
+  const err = document.getElementById('apikey-error');
+  if (!key) { err.textContent = 'Please enter your API key.'; return; }
+  btn.disabled = true;
+  btn.textContent = 'Validating...';
+  err.textContent = '';
+
+  const res = await fetch('/api/config', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ANTHROPIC_API_KEY: key }),
+  }).then(r => r.json()).catch(() => ({ error: 'Network error' }));
+
+  btn.disabled = false;
+  btn.textContent = 'Validate →';
+  if (res.ok) { goTo(4); }
+  else { err.textContent = res.error || 'Validation failed.'; }
+}
+
+async function validateBotToken() {
+  const token = document.getElementById('bottoken-input').value.trim();
+  const err = document.getElementById('bottoken-error');
+  if (!token) { err.textContent = 'Please enter the bot token.'; return; }
+  err.textContent = '';
+
+  const res = await fetch('/api/config', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ KID_BOT_TOKEN: token }),
+  }).then(r => r.json()).catch(() => ({ error: 'Network error' }));
+
+  if (res.ok) { goTo(5); }
+  else { err.textContent = res.error || 'Validation failed.'; }
+}
+
+function startPollingTelegramId() {
+  document.getElementById('kid-found').style.display = 'none';
+  document.getElementById('polling-indicator').style.display = 'flex';
+  document.getElementById('kid-next').disabled = true;
+  detectedKidId = null;
+
+  async function poll() {
+    const res = await fetch('/api/setup/telegram-id').then(r => r.json()).catch(() => ({ found: false }));
+    if (res.found) {
+      detectedKidId = res.id;
+      document.getElementById('polling-indicator').style.display = 'none';
+      document.getElementById('kid-found').style.display = 'block';
+      document.getElementById('kid-id-display').textContent = res.id;
+      document.getElementById('kid-name-display').textContent = res.name;
+      document.getElementById('kid-next').disabled = false;
+      await fetch('/api/config', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ SON_TELEGRAM_ID: String(res.id) }),
+      });
+    } else {
+      pollTimer = setTimeout(poll, 3000);
+    }
+  }
+  poll();
+}
+
+async function saveName() {
+  const name = document.getElementById('sonname-input').value.trim();
+  const err = document.getElementById('sonname-error');
+  if (!name) { err.textContent = 'Please enter a name.'; return; }
+  err.textContent = '';
+
+  await fetch('/api/config', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ SON_NAME: name }),
+  });
+  goTo(7);
+}
+
+async function startGuardian() {
+  await fetch('/api/guardian/start', { method: 'POST' });
+  const status = await fetch('/api/status').then(r => r.json()).catch(() => ({}));
+  document.getElementById('lobby-url').textContent = status.lanUrl || 'http://localhost:3000';
+}
+
+renderDots();
+</script>
+</body>
+</html>
