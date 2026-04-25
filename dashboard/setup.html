@@ -66,21 +66,28 @@
     <div class="step" id="step-4">
       <h1>Telegram Bot</h1>
       <p class="subtitle">Your kid will chat with the guardian through a Telegram bot you create. It only takes 2 minutes.</p>
-      <div class="instructions" style="margin-bottom:20px">
+      <div class="instructions" style="margin-bottom:16px">
         <ol>
           <li>Open Telegram and search for <a href="https://t.me/BotFather" target="_blank">@BotFather</a></li>
           <li>Send <code>/newbot</code> and follow the prompts</li>
           <li>Copy the token BotFather gives you (looks like <code>1234567890:AAH...</code>)</li>
         </ol>
       </div>
-      <div class="wizard-field">
+      <p style="font-size:12px;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;line-height:1.6;margin-bottom:16px">
+        🔒 Your bot token is saved <strong>only</strong> to the local <code style="background:#e2e8f0;padding:1px 5px;border-radius:4px">.env</code> file on this machine and is never transmitted anywhere else. You can also add it manually: open <code style="background:#e2e8f0;padding:1px 5px;border-radius:4px">.env</code> in the playground directory and add <code style="background:#e2e8f0;padding:1px 5px;border-radius:4px">KID_BOT_TOKEN=your-token-here</code>
+      </p>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#475569;margin-bottom:18px;cursor:pointer">
+        <input type="checkbox" id="bottoken-manual-toggle" onchange="toggleBotTokenManual(this.checked)" style="width:16px;height:16px;accent-color:#6366f1">
+        I've already added the bot token to <code style="background:#e2e8f0;padding:1px 5px;border-radius:4px">.env</code> manually
+      </label>
+      <div id="bottoken-field" class="wizard-field">
         <label>Bot Token</label>
         <input type="password" id="bottoken-input" placeholder="1234567890:AAH..." autocomplete="off">
       </div>
       <div class="error-msg" id="bottoken-error"></div>
       <div class="wizard-actions">
         <button class="btn btn-ghost" onclick="goTo(3)">← Back</button>
-        <button class="btn btn-primary" onclick="validateBotToken()">Validate →</button>
+        <button class="btn btn-primary" id="bottoken-btn" onclick="validateBotToken()">Validate →</button>
       </div>
     </div>
 
@@ -214,18 +221,35 @@ async function validateApiKey() {
   else { err.textContent = res.error || 'Validation failed.'; }
 }
 
+function toggleBotTokenManual(on) {
+  document.getElementById('bottoken-field').style.display = on ? 'none' : 'block';
+  document.getElementById('bottoken-btn').textContent = on ? 'Verify token in .env →' : 'Validate →';
+  document.getElementById('bottoken-error').textContent = '';
+}
+
 async function validateBotToken() {
-  const token = document.getElementById('bottoken-input').value.trim();
+  const btn = document.getElementById('bottoken-btn');
   const err = document.getElementById('bottoken-error');
-  if (!token) { err.textContent = 'Please enter the bot token.'; return; }
+  const manual = document.getElementById('bottoken-manual-toggle').checked;
+  btn.disabled = true;
+  btn.textContent = 'Verifying...';
   err.textContent = '';
 
-  const res = await fetch('/api/config', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ KID_BOT_TOKEN: token }),
-  }).then(r => r.json()).catch(() => ({ error: 'Network error' }));
+  let res;
+  if (manual) {
+    res = await fetch('/api/setup/verify-bot-token').then(r => r.json()).catch(() => ({ error: 'Network error' }));
+  } else {
+    const token = document.getElementById('bottoken-input').value.trim();
+    if (!token) { err.textContent = 'Please enter the bot token.'; btn.disabled = false; btn.textContent = 'Validate →'; return; }
+    res = await fetch('/api/config', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ KID_BOT_TOKEN: token }),
+    }).then(r => r.json()).catch(() => ({ error: 'Network error' }));
+  }
 
+  btn.disabled = false;
+  btn.textContent = manual ? 'Verify token in .env →' : 'Validate →';
   if (res.ok) { goTo(5); }
   else { err.textContent = res.error || 'Validation failed.'; }
 }

@@ -163,6 +163,20 @@ async function handleCheckClaude(): Promise<Response> {
   return json({ installed: true, authenticated: versionProc.exitCode === 0 });
 }
 
+async function handleVerifyBotToken(): Promise<Response> {
+  if (!config.kidBotToken) return json({ ok: false, error: "No bot token found in .env" });
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${config.kidBotToken}/getMe`, {
+      signal: AbortSignal.timeout(10_000),
+    });
+    const data = await res.json() as { ok: boolean; result?: { username: string } };
+    if (!data.ok) return json({ ok: false, error: "Bot token is invalid" });
+    return json({ ok: true, botUsername: data.result?.username ?? "" });
+  } catch {
+    return json({ ok: false, error: "Could not reach Telegram API" });
+  }
+}
+
 async function handleVerifyApiKey(): Promise<Response> {
   if (!config.anthropicApiKey) return json({ ok: false, error: "No API key found in .env" });
   try {
@@ -206,6 +220,7 @@ export async function handleApiRequest(req: Request, server: Bun.Server): Promis
   if (path === "/api/setup/telegram-id" && method === "GET") return handleSetupTelegramId();
   if (path === "/api/setup/check-claude" && method === "GET") return handleCheckClaude();
   if (path === "/api/setup/verify-api-key" && method === "GET") return handleVerifyApiKey();
+  if (path === "/api/setup/verify-bot-token" && method === "GET") return handleVerifyBotToken();
   if (path === "/api/open-claude" && method === "POST") return handleOpenClaude();
 
   return new Response("Not found", { status: 404 });
