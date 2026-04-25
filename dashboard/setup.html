@@ -146,6 +146,13 @@ const TOTAL_STEPS = 7;
 let detectedKidId = null;
 let pollTimer = null;
 
+async function apiFetch(url, options) {
+  try {
+    const r = await fetch(url, options);
+    try { return await r.json(); } catch { return { error: `Server error (HTTP ${r.status}) — try restarting the server` }; }
+  } catch { return { error: 'Could not reach server — is it running?' }; }
+}
+
 function renderDots() {
   const container = document.getElementById('dots');
   container.innerHTML = '';
@@ -176,7 +183,7 @@ async function checkClaude() {
   instructions.style.display = 'none';
   nextBtn.disabled = true;
 
-  const res = await fetch('/api/setup/check-claude').then(r => r.json()).catch(() => ({ installed: false }));
+  const res = await apiFetch('/api/setup/check-claude');
   if (res.installed && res.authenticated) {
     badge.className = 'check-badge ok';
     badge.textContent = '✓ Claude Code is ready';
@@ -204,15 +211,15 @@ async function validateApiKey() {
 
   let res;
   if (manual) {
-    res = await fetch('/api/setup/verify-api-key').then(r => r.json()).catch(() => ({ error: 'Network error' }));
+    res = await apiFetch('/api/setup/verify-api-key');
   } else {
     const key = document.getElementById('apikey-input').value.trim();
     if (!key) { err.textContent = 'Please enter your API key.'; btn.disabled = false; btn.textContent = 'Validate →'; return; }
-    res = await fetch('/api/config', {
+    res = await apiFetch('/api/config', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ANTHROPIC_API_KEY: key }),
-    }).then(r => r.json()).catch(() => ({ error: 'Network error' }));
+    });
   }
 
   btn.disabled = false;
@@ -237,15 +244,15 @@ async function validateBotToken() {
 
   let res;
   if (manual) {
-    res = await fetch('/api/setup/verify-bot-token').then(r => r.json()).catch(() => ({ error: 'Network error' }));
+    res = await apiFetch('/api/setup/verify-bot-token');
   } else {
     const token = document.getElementById('bottoken-input').value.trim();
     if (!token) { err.textContent = 'Please enter the bot token.'; btn.disabled = false; btn.textContent = 'Validate →'; return; }
-    res = await fetch('/api/config', {
+    res = await apiFetch('/api/config', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ KID_BOT_TOKEN: token }),
-    }).then(r => r.json()).catch(() => ({ error: 'Network error' }));
+    });
   }
 
   btn.disabled = false;
@@ -261,7 +268,7 @@ function startPollingTelegramId() {
   detectedKidId = null;
 
   async function poll() {
-    const res = await fetch('/api/setup/telegram-id').then(r => r.json()).catch(() => ({ found: false }));
+    const res = await apiFetch('/api/setup/telegram-id');
     if (res.found) {
       detectedKidId = res.id;
       document.getElementById('polling-indicator').style.display = 'none';
@@ -287,11 +294,11 @@ async function saveName() {
   if (!name) { err.textContent = 'Please enter a name.'; return; }
   err.textContent = '';
 
-  const res = await fetch('/api/config', {
+  const res = await apiFetch('/api/config', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ SON_NAME: name }),
-  }).then(r => r.json()).catch(() => ({ error: 'Network error' }));
+  });
   if (!res.ok) { err.textContent = res.error || 'Failed to save. Try again.'; return; }
   goTo(7);
 }
