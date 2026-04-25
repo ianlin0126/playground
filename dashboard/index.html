@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Playground Dashboard</title>
+  <link rel="stylesheet" href="/parent/style.css">
+</head>
+<body>
+<div class="shell">
+  <div class="sidebar">
+    <div class="sidebar-logo">🎮 Playground</div>
+    <div class="nav-item active" data-section="status" onclick="showSection('status', this)">
+      <span class="nav-icon">●</span> Status
+    </div>
+    <div class="nav-item" data-section="chats" onclick="showSection('chats', this)">
+      <span class="nav-icon">💬</span> Chats
+    </div>
+    <div class="nav-item" data-section="games" onclick="showSection('games', this)">
+      <span class="nav-icon">🎯</span> Games
+    </div>
+    <div class="nav-item" data-section="settings" onclick="showSection('settings', this)">
+      <span class="nav-icon">⚙️</span> Settings
+    </div>
+    <div class="sidebar-bottom">
+      <div class="status-dot" id="sidebar-dot"></div>
+      <span id="sidebar-status">Loading...</span>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <h1 id="section-title">Status</h1>
+      <button class="btn btn-primary" id="claude-btn" onclick="openClaude()" style="display:none">
+        ⚡ Open in Claude Code
+      </button>
+    </div>
+
+    <div class="content">
+
+      <!-- STATUS -->
+      <div class="section visible" id="section-status">
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="stat-label">Guardian</div>
+            <div class="stat-value" id="stat-guardian">—</div>
+            <div class="stat-sub" id="stat-uptime"></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Messages today</div>
+            <div class="stat-value" id="stat-msgs">—</div>
+            <div class="stat-sub" id="stat-flagged"></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Games built</div>
+            <div class="stat-value" id="stat-games">—</div>
+            <div class="stat-sub" id="stat-lastgame"></div>
+          </div>
+        </div>
+
+        <div class="control-card">
+          <div class="control-info">
+            <h3>Telegram Bot</h3>
+            <p id="bot-info">Loading...</p>
+          </div>
+          <button class="btn" id="toggle-btn" onclick="toggleGuardian()">...</button>
+        </div>
+
+        <div class="control-card">
+          <div class="control-info">
+            <h3>Game Server</h3>
+            <p id="server-url">Loading...</p>
+          </div>
+          <button class="btn btn-ghost" onclick="copyServerUrl()">Copy URL</button>
+        </div>
+      </div>
+
+      <!-- CHATS -->
+      <div class="section" id="section-chats">
+        <div class="chat-list" id="chat-list">
+          <p style="color:#94a3b8;font-size:13px">Loading conversations...</p>
+        </div>
+      </div>
+
+      <!-- GAMES -->
+      <div class="section" id="section-games">
+        <div class="games-grid" id="games-grid">
+          <p style="color:#94a3b8;font-size:13px">Loading games...</p>
+        </div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="section" id="section-settings">
+        <div class="settings-group">
+          <div class="settings-row">
+            <span class="settings-label">Kid's name</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="settings-value" id="cfg-sonName">—</span>
+              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="editField('SON_NAME','cfg-sonName')">Edit</button>
+            </div>
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">Kid's Telegram ID</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="settings-value" id="cfg-sonTelegramId">—</span>
+              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="editField('SON_TELEGRAM_ID','cfg-sonTelegramId')">Edit</button>
+            </div>
+          </div>
+        </div>
+        <div class="settings-group">
+          <div class="settings-row">
+            <span class="settings-label">Anthropic API key</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="settings-value" id="cfg-anthropicApiKey">—</span>
+              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="editSecret('ANTHROPIC_API_KEY','cfg-anthropicApiKey')">Edit</button>
+            </div>
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">Telegram bot token</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="settings-value" id="cfg-kidBotToken">—</span>
+              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="editSecret('KID_BOT_TOKEN','cfg-kidBotToken')">Edit</button>
+            </div>
+          </div>
+        </div>
+        <div class="settings-group">
+          <div class="settings-row">
+            <span class="settings-label">Playground directory</span>
+            <span class="settings-value readonly" id="cfg-playgroundDir">—</span>
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">Game server port</span>
+            <span class="settings-value" id="cfg-port">—</span>
+          </div>
+        </div>
+        <div style="margin-top:20px">
+          <button class="btn btn-primary" onclick="openClaude()">⚡ Open in Claude Code</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SECTIONS = ['status', 'chats', 'games', 'settings'];
+const TITLES   = { status:'Status', chats:'Conversations', games:'Games', settings:'Settings' };
+
+let _lanUrl = '';
+let _guardianStatus = 'stopped';
+
+function showSection(name, el) {
+  SECTIONS.forEach(s => {
+    document.getElementById('section-' + s).classList.toggle('visible', s === name);
+  });
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (el) el.classList.add('active');
+  document.getElementById('section-title').textContent = TITLES[name];
+  document.getElementById('claude-btn').style.display = (name === 'status') ? 'inline-flex' : 'none';
+  if (name === 'chats') loadChats();
+  if (name === 'games') loadGames();
+  if (name === 'settings') loadSettings();
+}
+
+// ── Status polling ────────────────────────────────────────────────────────
+
+function formatUptime(ms) {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+async function refreshStatus() {
+  const data = await fetch('/api/status').then(r => r.json()).catch(() => null);
+  if (!data) return;
+  _guardianStatus = data.status;
+  _lanUrl = data.lanUrl || '';
+
+  const dot = document.getElementById('sidebar-dot');
+  dot.className = 'status-dot ' + data.status;
+  document.getElementById('sidebar-status').textContent =
+    data.status === 'running' ? 'Guardian running' :
+    data.status === 'error'   ? 'Guardian error'   : 'Guardian stopped';
+
+  document.getElementById('stat-guardian').textContent = data.status === 'running' ? 'Running' : data.status === 'error' ? 'Error' : 'Stopped';
+  document.getElementById('stat-guardian').style.color = data.status === 'running' ? '#16a34a' : data.status === 'error' ? '#dc2626' : '#64748b';
+  document.getElementById('stat-uptime').textContent = data.status === 'running' && data.uptime ? `Started ${formatUptime(data.uptime)} ago` : '';
+  document.getElementById('stat-msgs').textContent = data.messagesToday ?? 0;
+  document.getElementById('stat-flagged').textContent = data.flaggedToday ? `${data.flaggedToday} flagged` : 'None flagged';
+  document.getElementById('stat-games').textContent = data.gamesBuilt ?? 0;
+  document.getElementById('stat-lastgame').textContent = data.lastGame ? `Last: ${data.lastGame}` : '';
+
+  document.getElementById('bot-info').textContent =
+    `${data.sonName || '—'} (ID ${data.sonTelegramId || '—'})`;
+
+  const toggleBtn = document.getElementById('toggle-btn');
+  if (data.status === 'running') {
+    toggleBtn.textContent = 'Stop Guardian';
+    toggleBtn.className = 'btn btn-danger';
+  } else {
+    toggleBtn.textContent = 'Start Guardian';
+    toggleBtn.className = 'btn btn-success';
+  }
+
+  document.getElementById('server-url').textContent = data.lanUrl || 'localhost:3000';
+}
+
+async function toggleGuardian() {
+  const endpoint = _guardianStatus === 'running' ? '/api/guardian/stop' : '/api/guardian/start';
+  await fetch(endpoint, { method: 'POST' });
+  await refreshStatus();
+}
+
+function copyServerUrl() {
+  navigator.clipboard.writeText(_lanUrl).then(() => {
+    const btn = event.target;
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy URL', 1500);
+  });
+}
+
+// ── Chats ─────────────────────────────────────────────────────────────────
+
+function timeAgo(isoStr) {
+  const d = new Date(isoStr);
+  const s = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (s < 60) return 'just now';
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return d.toLocaleDateString();
+}
+
+async function loadChats() {
+  const turns = await fetch('/api/conversations').then(r => r.json()).catch(() => []);
+  const list = document.getElementById('chat-list');
+  if (!turns.length) { list.innerHTML = '<p style="color:#94a3b8;font-size:13px">No conversations yet.</p>'; return; }
+
+  list.innerHTML = turns.map(t => `
+    <div class="chat-msg ${t.flagged ? 'flagged' : ''}">
+      <div class="chat-meta">
+        <span class="chat-sender ${t.direction === 'guardian' ? 'guardian' : ''}">
+          ${t.direction === 'kid' ? '👦 Kid' : '🤖 Guardian'}
+          ${t.flagged ? '<span class="flag-badge">⚠ flagged</span>' : ''}
+        </span>
+        <span class="chat-time">${timeAgo(t.ts)}</span>
+      </div>
+      <div class="chat-text">${escHtml(t.message)}</div>
+    </div>
+  `).join('');
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Games ─────────────────────────────────────────────────────────────────
+
+const GAME_EMOJIS = {
+  'catch': '⭐', 'star': '⭐', 'space': '🚀', 'shoot': '🚀', 'alien': '👾',
+  'fruit': '🍉', 'ninja': '🥷', 'color': '🎨', 'fish': '🐟', 'balloon': '🎈',
+  'cookie': '🍪', 'whack': '🐹', 'mole': '🐹', 'maze': '🌀', 'memory': '🧠',
+  'slide': '🧩', 'snow': '❄️', 'turtle': '🐢', 'race': '🏁', 'uno': '🃏',
+};
+
+function gameEmoji(name) {
+  const lower = name.toLowerCase();
+  for (const [key, emoji] of Object.entries(GAME_EMOJIS)) {
+    if (lower.includes(key)) return emoji;
+  }
+  return '🎮';
+}
+
+async function loadGames() {
+  const games = await fetch('/api/games').then(r => r.json()).catch(() => []);
+  const grid = document.getElementById('games-grid');
+  if (!games.length) { grid.innerHTML = '<p style="color:#94a3b8;font-size:13px">No games built yet.</p>'; return; }
+
+  grid.innerHTML = [...games].reverse().map(g => `
+    <div class="game-card">
+      <div class="game-thumb">${gameEmoji(g.name)}</div>
+      <div class="game-info">
+        <div class="game-name">${escHtml(g.name)}</div>
+        <div class="game-date">${new Date(g.builtAt).toLocaleDateString()}</div>
+        <a class="game-link" href="/games/${g.slug}/" target="_blank">▶ Play</a>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────
+
+async function loadSettings() {
+  const cfg = await fetch('/api/config').then(r => r.json()).catch(() => ({}));
+  document.getElementById('cfg-sonName').textContent = cfg.sonName || '—';
+  document.getElementById('cfg-sonTelegramId').textContent = cfg.sonTelegramId || '—';
+  document.getElementById('cfg-anthropicApiKey').textContent = cfg.anthropicApiKey || '—';
+  document.getElementById('cfg-kidBotToken').textContent = cfg.kidBotToken || '—';
+  document.getElementById('cfg-playgroundDir').textContent = cfg.playgroundDir || '—';
+  document.getElementById('cfg-port').textContent = cfg.port || '—';
+}
+
+async function editField(envKey, displayId) {
+  const display = document.getElementById(displayId);
+  const current = display.textContent;
+  const val = prompt(`New value for ${envKey}:`, current === '—' ? '' : current);
+  if (!val) return;
+  await fetch('/api/config', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ [envKey]: val }),
+  });
+  display.textContent = val;
+}
+
+async function editSecret(envKey, displayId) {
+  const val = prompt(`New value for ${envKey} (will be validated):`);
+  if (!val) return;
+  const res = await fetch('/api/config', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ [envKey]: val }),
+  }).then(r => r.json());
+  if (res.ok) {
+    document.getElementById(displayId).textContent = `${val.slice(0,8)}••••`;
+  } else {
+    alert('Error: ' + (res.error || 'Validation failed'));
+  }
+}
+
+async function openClaude() {
+  await fetch('/api/open-claude', { method: 'POST' });
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+
+refreshStatus();
+setInterval(refreshStatus, 5000);
+</script>
+</body>
+</html>
