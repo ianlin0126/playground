@@ -71,7 +71,7 @@
             <h3>Game Server</h3>
             <p id="server-url">Loading...</p>
           </div>
-          <button class="btn btn-ghost" onclick="copyServerUrl()">Copy URL</button>
+          <button class="btn btn-ghost" onclick="copyServerUrl(event)">Copy URL</button>
         </div>
       </div>
 
@@ -212,9 +212,9 @@ async function toggleGuardian() {
   await refreshStatus();
 }
 
-function copyServerUrl() {
+function copyServerUrl(e) {
   navigator.clipboard.writeText(_lanUrl).then(() => {
-    const btn = event.target;
+    const btn = e.currentTarget;
     btn.textContent = 'Copied!';
     setTimeout(() => btn.textContent = 'Copy URL', 1500);
   });

@@ -143,6 +143,7 @@ function renderDots() {
 }
 
 function goTo(n) {
+  if (pollTimer !== null) { clearTimeout(pollTimer); pollTimer = null; }
   document.getElementById('step-' + currentStep).classList.remove('active');
   currentStep = n;
   document.getElementById('step-' + currentStep).classList.add('active');
@@ -243,11 +244,12 @@ async function saveName() {
   if (!name) { err.textContent = 'Please enter a name.'; return; }
   err.textContent = '';
 
-  await fetch('/api/config', {
+  const res = await fetch('/api/config', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ SON_NAME: name }),
-  });
+  }).then(r => r.json()).catch(() => ({ error: 'Network error' }));
+  if (!res.ok) { err.textContent = res.error || 'Failed to save. Try again.'; return; }
   goTo(7);
 }
 
