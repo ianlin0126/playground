@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config";
-import { insertTurn } from "./db";
+import { insertTurn, getRecentTurns } from "./db";
 import { getGuardianSystemPrompt } from "./prompts";
 import { buildGame } from "./builder";
 
@@ -199,6 +199,7 @@ async function pollLoop(anthropic: Anthropic): Promise<void> {
 
         let image: { base64: string; mimeType: "image/jpeg" } | undefined;
         if (msg.photo?.length) {
+          console.log(`📷 [${msg.from.id}]: photo${msg.caption ? ` — "${msg.caption}"` : ""}`);
           const largest = msg.photo[msg.photo.length - 1];
           image = await downloadPhoto(largest.file_id).catch((err) => {
             console.error("Failed to download photo:", err);
@@ -207,6 +208,9 @@ async function pollLoop(anthropic: Anthropic): Promise<void> {
         }
 
         const text = msg.text ?? msg.caption ?? "";
+        if (!msg.photo?.length) {
+          console.log(`📨 [${msg.from.id}]: ${msg.text}`);
+        }
         await handleMessage(anthropic, msg.chat.id, msg.from.id, text, image).catch((err) =>
           console.error("Error handling message:", err)
         );
@@ -230,6 +234,16 @@ export function start(): void {
   state.error = null;
 
   const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
+
+  // Seed conversation history from DB so the guardian remembers past turns
+  conversationHistory.length = 0; // clear in case of restart
+  const savedTurns = getRecentTurns(40).reverse();
+  for (const turn of savedTurns) {
+    conversationHistory.push({
+      role: turn.direction === "kid" ? "user" : "assistant",
+      content: turn.message,
+    });
+  }
 
   pollLoop(anthropic)
     .catch((err) => {
