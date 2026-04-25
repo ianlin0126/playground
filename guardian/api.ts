@@ -107,21 +107,25 @@ async function handleConfigPatch(req: Request): Promise<Response> {
   }
 
   // Validate Telegram bot token if provided
+  let botUsername = "";
   if (body.KID_BOT_TOKEN) {
-    const res = await fetch(`https://api.telegram.org/bot${body.KID_BOT_TOKEN}/getMe`, {
-      signal: AbortSignal.timeout(10_000),
-    });
-    const data = await res.json() as { ok: boolean; result?: { username: string } };
-    if (!data.ok) return json({ error: "Invalid Telegram bot token" }, 400);
-    body._botUsername = data.result?.username ?? "";
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${body.KID_BOT_TOKEN}/getMe`, {
+        signal: AbortSignal.timeout(10_000),
+      });
+      const data = await res.json() as { ok: boolean; result?: { username: string } };
+      if (!data.ok) return json({ error: "Invalid Telegram bot token" }, 400);
+      botUsername = data.result?.username ?? "";
+    } catch {
+      return json({ error: "Could not reach Telegram API" }, 400);
+    }
   }
 
   // Write to .env and update live config
-  const { _botUsername, ...envFields } = body;
-  writeEnvAll(config.playgroundDir, envFields);
-  applyEnvToConfig(envFields);
+  writeEnvAll(config.playgroundDir, body);
+  applyEnvToConfig(body);
 
-  return json({ ok: true, botUsername: _botUsername ?? null });
+  return json({ ok: true, botUsername: botUsername || null });
 }
 
 function handleSetupStatus(): Response {
@@ -154,6 +158,8 @@ async function handleCheckClaude(): Promise<Response> {
 
   const versionProc = Bun.spawn(["claude", "--version"], { stdout: "pipe", stderr: "pipe" });
   await versionProc.exited;
+  // exitCode 0 means CLI is installed and responds — not a full auth check,
+  // but sufficient to confirm the tool is ready to use
   return json({ installed: true, authenticated: versionProc.exitCode === 0 });
 }
 
