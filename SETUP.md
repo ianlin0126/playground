@@ -16,7 +16,7 @@ A shared AI game studio for parents and kids. Parents build games with Claude Co
 git clone https://github.com/ianlin0126/playground.git
 cd playground
 bun install
-bun run guardian
+bun run server
 ```
 
 Open **http://localhost:3000/parent** in your browser. The setup wizard will guide you through the rest (~5 minutes).
@@ -39,17 +39,19 @@ The game server at `http://<your-lan-ip>:3000` is accessible from any device on 
 
 ## Stopping and Starting
 
-The guardian runs as long as the terminal window is open. To stop:
+The server runs as long as the terminal window is open. To stop:
 
 ```bash
-# Ctrl+C in the terminal running bun run guardian
+# Ctrl+C in the terminal running bun run server
 ```
 
 To start again:
 
 ```bash
-bun run guardian
+bun run server
 ```
+
+The Telegram bot (guardian) starts automatically on launch if the config is complete. You can also stop and restart it independently from the dashboard's Status page without touching the server process.
 
 ## Configuration
 

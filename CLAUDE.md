@@ -23,7 +23,7 @@ This file provides guidance for AI assistants (Claude and others) working with t
 
 The Guardian Agent is a Bun/TypeScript process that lets Ian's son interact with the playground via Telegram.
 
-**Start:** `bun run guardian` (from the `playground/` root — requires a `.env` file)
+**Start:** `bun run server` (from the `playground/` root — `.env` optional; wizard runs if missing)
 
 **What it does:**
 - Listens to a dedicated kid Telegram bot (separate from the parent bot)
@@ -207,7 +207,9 @@ All features, copy, and assets must be appropriate for children ~8 years old.
 
 When Clive requests a game via Telegram, the guardian writes a job to `.guardian/jobs/<id>.json`. Ian's Claude Code session processes these jobs with full tool access — producing the same quality as direct Claude Code prompting.
 
-### Start monitoring (run once per session)
+### Start monitoring (REQUIRED — run at the start of every session)
+
+Without this running, game builds will time out after 3 minutes and fall back to low-quality subprocess builds.
 
 Use the Monitor tool pointed at this shell loop:
 

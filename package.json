@@ -2,6 +2,7 @@
   "name": "playground",
   "version": "1.0.0",
   "scripts": {
+    "server": "bun run guardian/guardian.ts",
     "guardian": "bun run guardian/guardian.ts"
   },
   "dependencies": {
