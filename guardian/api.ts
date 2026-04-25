@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import { config, readEnvFile, writeEnvAll, getMissingFields, applyEnvToConfig } from "./config";
+import { config, writeEnvAll, getMissingFields, applyEnvToConfig } from "./config";
 import { state as telegramState, start as startTelegram, stop as stopTelegram } from "./telegram";
 import { getRecentTurns } from "./db";
 
