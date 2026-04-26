@@ -268,16 +268,18 @@ async function startPollingTelegramId() {
   document.getElementById('kid-next').disabled = true;
   detectedKidId = null;
 
-  // Stop the Telegram loop while we wait — otherwise it consumes getUpdates
-  // and the wizard's poll never sees incoming messages.
-  await apiFetch('/api/guardian/stop', { method: 'POST' });
-
-  // If SON_TELEGRAM_ID is already configured (re-run case), pre-fill immediately.
+  // If SON_TELEGRAM_ID is already configured (re-run case), pre-fill immediately
+  // without touching the guardian — stopping it would block restart in step 7.
   const cfg = await apiFetch('/api/config');
   if (cfg.sonTelegramId) {
     showKidFound(cfg.sonTelegramId, '(from existing config)');
     return;
   }
+
+  // SON_TELEGRAM_ID is unknown — we need to poll Telegram for a new message.
+  // Stop the guardian loop so it doesn't consume getUpdates before we see them.
+  // On a fresh setup the guardian isn't running yet, so this is a no-op.
+  await apiFetch('/api/guardian/stop', { method: 'POST' });
 
   async function poll() {
     const res = await apiFetch('/api/setup/telegram-id');
