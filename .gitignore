@@ -2,3 +2,4 @@
 .guardian/
 .env
 node_modules/
+games/

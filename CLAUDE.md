@@ -21,7 +21,7 @@ This file provides guidance for AI assistants (Claude and others) working with t
 
 ## Guardian Agent
 
-The Guardian Agent is a Bun/TypeScript process that lets Ian's son interact with the playground via Telegram.
+The Guardian Agent is a Bun/TypeScript process that lets your child interact with the playground via Telegram.
 
 **Start:** `bun run server` (from the `playground/` root — `.env` optional; wizard runs if missing)
 
@@ -50,7 +50,7 @@ SON_TELEGRAM_ID=     # kid's numeric Telegram user ID
 
 **Game lobby:** `games/manifest.json` lists all built games; `index.html` fetches it dynamically. Add new entries by having the guardian build a game, or manually append to the JSON.
 
-**Parent monitoring:** Ian queries `.guardian/conversations.db` directly from his Claude Code session — `flagged=1` rows indicate messages that triggered alarm phrases.
+**Parent monitoring:** The parent queries `.guardian/conversations.db` directly from their Claude Code session — `flagged=1` rows indicate messages that triggered alarm phrases.
 
 ---
 
@@ -205,32 +205,52 @@ All features, copy, and assets must be appropriate for children ~8 years old.
 
 ## Guardian Build Queue
 
-When Clive requests a game via Telegram, the guardian writes a job to `.guardian/jobs/<id>.json`. Ian's Claude Code session processes these jobs with full tool access — producing the same quality as direct Claude Code prompting.
+When the child requests a game via Telegram, the guardian writes a job to `.guardian/jobs/<id>.json`.
 
-### Start monitoring (REQUIRED — run at the start of every session)
+**Claude Code is required for game builds.** The guardian queues a job file and waits for a Claude Code session to pick it up. If no session picks up the job within 90 seconds, the guardian tells the kid to ask a grown-up to open Claude Code.
 
-Without this running, game builds will time out after 3 minutes and fall back to low-quality subprocess builds.
+### Claude Code session monitor (required)
 
-Use the Monitor tool pointed at this shell loop:
+Run the Monitor in a Claude Code session opened in the playground directory. A `SessionStart` hook in `.claude/settings.local.json` starts this automatically — just open Claude Code and it begins watching.
+
+Use the Monitor tool pointed at this Python command (singleton — only one instance runs at a time):
 
 ```bash
-while true; do
-  for f in /Users/ian/ai-workspace/playground/.guardian/jobs/*.json; do
-    [ -f "$f" ] || continue
-    status=$(python3 -c "import json; print(json.load(open('$f'))['status'])" 2>/dev/null)
-    [ "$status" = "pending" ] && echo "JOB:$f"
-  done
-  sleep 3
-done
+python3 -c "
+import os, json, time, sys
+pid_file = '/tmp/guardian-monitor.pid'
+with open(pid_file, 'w') as f:
+    f.write(str(os.getpid()))
+try:
+    jobs_dir = os.path.join(os.getcwd(), '.guardian', 'jobs')
+    seen = set()
+    while True:
+        if os.path.isdir(jobs_dir):
+            try: files = [f for f in os.listdir(jobs_dir) if f.endswith('.json')]
+            except: files = []
+            for f in files:
+                fpath = os.path.join(jobs_dir, f)
+                if fpath in seen: continue
+                try:
+                    with open(fpath) as fp: job = json.load(fp)
+                    if job.get('status') == 'pending':
+                        seen.add(fpath)
+                        print('JOB:' + fpath, flush=True)
+                except: pass
+        time.sleep(3)
+finally:
+    try: os.unlink(pid_file)
+    except: pass
+"
 ```
 
 Each `JOB:<path>` line is a notification of a new pending build request.
 
+**Singleton guarantee:** The SessionStart hook checks `/tmp/guardian-monitor.pid` before instructing Claude to start a monitor. If the PID exists and the process is alive, the hook tells Claude to skip — so only one monitor runs across all open sessions.
+
 ### Processing a job (when a JOB: notification arrives)
 
-**Must be picked up within 3 minutes — otherwise guardian falls back to subprocess.**
-
-1. Read the job file. Set `status → "in_progress"`, `pickedUpAt → <ISO now>`, write back.
+1. Read the job file. Set `status → "in_progress"`, `claimedBy → "claude-code"`, `pickedUpAt → <ISO now>`, write back.
 2. Execute the `prompt` field using full tool access (Read, Write, Edit, Bash, WebFetch).
 3. **Mandatory quality checks before marking done:**
    - **No truncation:** Read the written file — confirm it ends with `</html>` and all `<script>` blocks are closed.
