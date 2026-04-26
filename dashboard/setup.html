@@ -261,31 +261,50 @@ async function validateBotToken() {
   else { err.textContent = res.error || 'Validation failed.'; }
 }
 
-function startPollingTelegramId() {
+async function startPollingTelegramId() {
   document.getElementById('kid-found').style.display = 'none';
   document.getElementById('polling-indicator').style.display = 'flex';
+  document.getElementById('telegram-id-error').textContent = '';
   document.getElementById('kid-next').disabled = true;
   detectedKidId = null;
+
+  // Stop the Telegram loop while we wait — otherwise it consumes getUpdates
+  // and the wizard's poll never sees incoming messages.
+  await apiFetch('/api/guardian/stop', { method: 'POST' });
+
+  // If SON_TELEGRAM_ID is already configured (re-run case), pre-fill immediately.
+  const cfg = await apiFetch('/api/config');
+  if (cfg.sonTelegramId) {
+    showKidFound(cfg.sonTelegramId, '(from existing config)');
+    return;
+  }
 
   async function poll() {
     const res = await apiFetch('/api/setup/telegram-id');
     if (res.found) {
-      detectedKidId = res.id;
-      document.getElementById('polling-indicator').style.display = 'none';
-      document.getElementById('kid-found').style.display = 'block';
-      document.getElementById('kid-id-display').textContent = res.id;
-      document.getElementById('kid-name-display').textContent = res.name;
-      document.getElementById('kid-next').disabled = false;
-      await fetch('/api/config', {
+      showKidFound(res.id, res.name);
+      await apiFetch('/api/config', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ SON_TELEGRAM_ID: String(res.id) }),
       });
+    } else if (res.error) {
+      document.getElementById('polling-indicator').style.display = 'none';
+      document.getElementById('telegram-id-error').textContent = res.error;
     } else {
       pollTimer = setTimeout(poll, 3000);
     }
   }
   poll();
+}
+
+function showKidFound(id, name) {
+  detectedKidId = id;
+  document.getElementById('polling-indicator').style.display = 'none';
+  document.getElementById('kid-found').style.display = 'block';
+  document.getElementById('kid-id-display').textContent = id;
+  document.getElementById('kid-name-display').textContent = name;
+  document.getElementById('kid-next').disabled = false;
 }
 
 async function saveName() {
