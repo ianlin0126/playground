@@ -1,6 +1,13 @@
-import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync } from "fs";
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync } from "fs";
 import { join } from "path";
 import { config } from "./config";
+
+export class BuildNotPickedUpError extends Error {
+  constructor() {
+    super("Build job not picked up — Claude Code session is not running or the monitor is not active");
+    this.name = "BuildNotPickedUpError";
+  }
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -12,26 +19,51 @@ function toSlug(name: string): string {
     .replace(/\s+/g, "-");
 }
 
-function readManifest(gamesDir: string): Array<{ name: string; slug: string; builtAt: string }> {
+type ManifestEntry = { id: string; name: string; slug: string; builtAt: string };
+
+function genId(builtAt?: string): string {
+  const ts = builtAt ? new Date(builtAt).getTime() : NaN;
+  return (isNaN(ts) ? Date.now() : ts).toString(36);
+}
+
+function readManifest(gamesDir: string): ManifestEntry[] {
   const manifestPath = join(gamesDir, "manifest.json");
   if (!existsSync(manifestPath)) return [];
   try {
-    return JSON.parse(readFileSync(manifestPath, "utf8"));
+    const raw: Array<{ id?: string; name: string; slug: string; builtAt: string }> =
+      JSON.parse(readFileSync(manifestPath, "utf8"));
+    let changed = false;
+    const entries: ManifestEntry[] = raw.map((e) => {
+      if (e.id) return e as ManifestEntry;
+      changed = true;
+      return { id: genId(e.builtAt), name: e.name, slug: e.slug, builtAt: e.builtAt };
+    });
+    if (changed) writeFileSync(manifestPath, JSON.stringify(entries, null, 2));
+    return entries;
   } catch {
     return [];
   }
 }
 
-function writeManifest(gamesDir: string, entries: Array<{ name: string; slug: string; builtAt: string }>): void {
+function writeManifest(gamesDir: string, entries: ManifestEntry[]): void {
   writeFileSync(join(gamesDir, "manifest.json"), JSON.stringify(entries, null, 2));
 }
 
-function updateManifest(gamesDir: string, gameName: string, slug: string): void {
+export function updateManifest(gamesDir: string, gameName: string, slug: string, gameId?: string): string {
   const manifest = readManifest(gamesDir);
-  const idx = manifest.findIndex((e) => e.slug === slug);
-  const entry = { name: gameName, slug, builtAt: new Date().toISOString() };
+  const idx = gameId
+    ? manifest.findIndex((e) => e.id === gameId)
+    : manifest.findIndex((e) => e.slug === slug);
+  const id = idx >= 0 ? manifest[idx].id : (gameId ?? genId());
+  const entry: ManifestEntry = { id, name: gameName, slug, builtAt: new Date().toISOString() };
   if (idx >= 0) manifest[idx] = entry; else manifest.push(entry);
   writeManifest(gamesDir, manifest);
+  return id;
+}
+
+export function getExistingGames(): Array<{ id: string; name: string }> {
+  const gamesDir = join(config.playgroundDir, "games");
+  return readManifest(gamesDir).map(({ id, name }) => ({ id, name }));
 }
 
 type ConversationTurn = { role: string; content: string };
@@ -39,7 +71,7 @@ type ConversationTurn = { role: string; content: string };
 function formatConversationContext(turns: ConversationTurn[]): string {
   if (!turns.length) return "";
   const lines = turns.map((t) => {
-    const speaker = t.role === "user" ? "Clive (kid)" : "Guardian";
+    const speaker = t.role === "user" ? `${config.sonName} (kid)` : "Guardian";
     return `${speaker}: ${typeof t.content === "string" ? t.content : "[image/media]"}`;
   });
   return `\nRecent conversation (for context):\n${lines.join("\n")}\n`;
@@ -98,42 +130,23 @@ ${requirements}
 ${verifySteps}`;
 }
 
-// ── Primary path: file-based job queue processed by Ian's Claude Code session ──
+// ── Primary path: file-based job queue processed by the parent's Claude Code session ──
 
 const JOBS_DIR = join(config.playgroundDir, ".guardian", "jobs");
 const POLL_MS = 4_000;
-const PICKUP_TIMEOUT_MS = 3 * 60 * 1000;
-const TOTAL_TIMEOUT_MS = 12 * 60 * 1000;
+const PICKUP_TIMEOUT_MS = 10 * 60 * 1000;  // Claude Code may be mid-build on another game; give it 10 min
+const TOTAL_TIMEOUT_MS = 30 * 60 * 1000;
+const ZOMBIE_THRESHOLD_MS = 10 * 60 * 1000; // in_progress > 10 min with no completion → dead session
 
-async function buildGameViaJobQueue(
-  gameName: string,
+async function pollJobToCompletion(
+  jobPath: string,
   slug: string,
-  isRevision: boolean,
-  existingHtml: string | undefined,
-  revisionRequest: string | undefined,
-  conversationContext: ConversationTurn[],
+  startMs: number,
   onProgress?: (msg: string) => void
-): Promise<{ slug: string; url: string }> {
-  mkdirSync(JOBS_DIR, { recursive: true });
-
-  const id = `${Date.now()}-${slug}`;
-  const jobPath = join(JOBS_DIR, `${id}.json`);
-  const prompt = buildPrompt(gameName, slug, isRevision, existingHtml, revisionRequest, conversationContext);
-
-  writeFileSync(jobPath, JSON.stringify({
-    id, gameName, slug, isRevision,
-    revisionRequest: revisionRequest ?? null,
-    prompt, status: "pending",
-    createdAt: new Date().toISOString(),
-    port: config.port, lanIp: config.lanIp,
-    playgroundDir: config.playgroundDir,
-    pickedUpAt: null, completedAt: null, url: null, error: null,
-  }, null, 2));
-
-  console.log(`[builder] Job queued for Claude Code session: ${jobPath}`);
-
-  const startMs = Date.now();
+): Promise<{ slug: string; url: string; jobPath: string }> {
   let prog60 = false, prog120 = false;
+  let zombieRequeued = false;
+  let zombieRequeuedAt = 0;
 
   while (true) {
     await Bun.sleep(POLL_MS);
@@ -147,20 +160,34 @@ async function buildGameViaJobQueue(
     catch { continue; } // file mid-write — retry next tick
 
     if (job.status === "done" && job.url) {
-      console.log(`[builder] Job completed by Claude Code session: ${job.url}`);
-      updateManifest(join(config.playgroundDir, "games"), gameName, slug);
-      return { slug, url: job.url as string };
+      console.log(`[builder] Job completed: ${job.url}`);
+      return { slug, url: job.url as string, jobPath };
     }
 
     if (job.status === "failed") {
-      throw new Error((job.error as string) ?? "Claude Code session reported build failed");
+      throw new Error((job.error as string) ?? "Build failed");
     }
 
-    // No pickup within 3 minutes → fall back to subprocess
-    if (job.status === "pending" && elapsed >= PICKUP_TIMEOUT_MS) {
-      console.log(`[builder] No Claude Code session picked up job after ${PICKUP_TIMEOUT_MS / 1000}s — falling back to subprocess`);
-      try { unlinkSync(jobPath); } catch {}
-      throw new Error("PICKUP_TIMEOUT");
+    // Zombie detection: session claimed the job but died before finishing
+    if (job.status === "in_progress" && job.pickedUpAt && !zombieRequeued) {
+      const age = Date.now() - new Date(job.pickedUpAt as string).getTime();
+      if (age > ZOMBIE_THRESHOLD_MS) {
+        zombieRequeued = true;
+        zombieRequeuedAt = Date.now();
+        job.status = "pending";
+        job.pickedUpAt = null;
+        job.claimedBy = null;
+        writeFileSync(jobPath, JSON.stringify(job, null, 2));
+        onProgress?.("Hang on, almost there! 🔧 Working on it...");
+        console.log(`[builder] Zombie detected, re-queued: ${job.id}`);
+      }
+    }
+
+    if (job.status === "pending") {
+      const pickupDeadline = zombieRequeued
+        ? zombieRequeuedAt + PICKUP_TIMEOUT_MS
+        : startMs + PICKUP_TIMEOUT_MS;
+      if (Date.now() >= pickupDeadline) throw new BuildNotPickedUpError();
     }
 
     if (elapsed >= TOTAL_TIMEOUT_MS) {
@@ -169,87 +196,88 @@ async function buildGameViaJobQueue(
   }
 }
 
-// ── Fallback: claude -p subprocess ────────────────────────────────────────
+const DEDUP_WINDOW_MS = 30 * 60 * 1000;
 
-async function buildGameSubprocess(
+async function buildGameViaJobQueue(
   gameName: string,
   slug: string,
   isRevision: boolean,
   existingHtml: string | undefined,
   revisionRequest: string | undefined,
   conversationContext: ConversationTurn[],
+  chatId: number | undefined,
   onProgress?: (msg: string) => void
-): Promise<{ slug: string; url: string }> {
-  const gamesDir = join(config.playgroundDir, "games");
-  const gameDir = join(gamesDir, slug);
+): Promise<{ slug: string; url: string; jobPath: string }> {
+  mkdirSync(JOBS_DIR, { recursive: true });
+
+  // Attach to an existing pending/in_progress job for the same slug rather than
+  // creating a duplicate — happens when BuildNotPickedUpError fires and the kid re-confirms.
+  try {
+    const files = readdirSync(JOBS_DIR).filter((f) => f.endsWith(".json"));
+    for (const f of files) {
+      try {
+        const j = JSON.parse(readFileSync(join(JOBS_DIR, f), "utf8")) as Record<string, unknown>;
+        if (
+          j.slug === slug &&
+          (j.status === "pending" || j.status === "in_progress") &&
+          new Date(j.createdAt as string).getTime() > Date.now() - DEDUP_WINDOW_MS
+        ) {
+          const existingPath = join(JOBS_DIR, f);
+          console.log(`[builder] Duplicate job for "${slug}" — attaching to existing ${j.id}`);
+          onProgress?.("Already building it! Just a moment... 🔨");
+          return pollJobToCompletion(existingPath, slug, Date.now(), onProgress);
+        }
+      } catch { /* skip unreadable files */ }
+    }
+  } catch { /* jobs dir not yet readable — fall through to create new job */ }
+
+  const id = `${Date.now()}-${slug}`;
+  const jobPath = join(JOBS_DIR, `${id}.json`);
   const prompt = buildPrompt(gameName, slug, isRevision, existingHtml, revisionRequest, conversationContext);
 
-  const proc = Bun.spawn(["claude", "--dangerously-skip-permissions", "-p", prompt], {
-    cwd: config.playgroundDir,
-    stdout: "pipe",
-    stderr: "inherit", // must not pipe-and-ignore — fills buffer and deadlocks
-    stdin: "ignore",
-  });
+  writeFileSync(jobPath, JSON.stringify({
+    id, gameName, slug, isRevision,
+    revisionRequest: revisionRequest ?? null,
+    chatId: chatId ?? null,
+    prompt, status: "pending",
+    createdAt: new Date().toISOString(),
+    port: config.port, lanIp: config.lanIp,
+    playgroundDir: config.playgroundDir,
+    pickedUpAt: null, completedAt: null, url: null, error: null,
+    telegramSentAt: null,
+  }, null, 2));
 
-  const TIMEOUT_MS = 10 * 60 * 1000;
-  let timedOut = false;
-  const timer60 = setTimeout(() => onProgress?.("Still working on it... 🔨 Almost there!"), 60_000);
-  const timer120 = setTimeout(() => onProgress?.("Making it extra special! ✨ Just a bit longer..."), 120_000);
-  const killTimer = setTimeout(() => { timedOut = true; proc.kill(); }, TIMEOUT_MS);
+  console.log(`[builder] Job queued for Claude Code session: ${jobPath}`);
 
-  let stdout = "";
-  const reader = proc.stdout.getReader();
-  const decoder = new TextDecoder();
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      stdout += decoder.decode(value, { stream: true });
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  await proc.exited;
-  clearTimeout(timer60);
-  clearTimeout(timer120);
-  clearTimeout(killTimer);
-
-  if (timedOut) throw new Error(`Game build timed out after ${TIMEOUT_MS / 1000}s`);
-
-  const tokenMatch = stdout.match(/^GAME_READY:\s*.+$/m);
-  if (!tokenMatch && !existsSync(join(gameDir, "index.html"))) {
-    throw new Error(`Build did not produce games/${slug}/index.html`);
-  }
-
-  updateManifest(gamesDir, gameName, slug);
-  return { slug, url: `http://${config.lanIp}:${config.port}/games/${slug}/?v=${Date.now()}` };
+  return pollJobToCompletion(jobPath, slug, Date.now(), onProgress);
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────
 
 export async function buildGame(
   gameName: string,
+  chatId: number | undefined,
   revisionRequest?: string,
   onProgress?: (msg: string) => void,
-  conversationContext: ConversationTurn[] = []
-): Promise<{ slug: string; url: string }> {
+  conversationContext: ConversationTurn[] = [],
+  gameId?: string
+): Promise<{ slug: string; url: string; jobPath: string }> {
   const gamesDir = join(config.playgroundDir, "games");
-  const slug = toSlug(gameName);
+  let slug = toSlug(gameName);
   mkdirSync(gamesDir, { recursive: true });
+
+  // If a gameId was supplied, resolve it to the exact existing slug
+  if (gameId) {
+    const manifest = readManifest(gamesDir);
+    const existing = manifest.find((e) => e.id === gameId);
+    if (existing && existsSync(join(gamesDir, existing.slug, "index.html"))) {
+      console.log(`[builder] ID-resolved game "${gameId}" → slug "${existing.slug}"`);
+      slug = existing.slug;
+    }
+  }
 
   const isRevision = existsSync(join(gamesDir, slug, "index.html"));
   const existingHtml = isRevision ? readFileSync(join(gamesDir, slug, "index.html"), "utf8") : undefined;
 
-  try {
-    return await buildGameViaJobQueue(gameName, slug, isRevision, existingHtml, revisionRequest, conversationContext, onProgress);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg === "PICKUP_TIMEOUT" || msg.startsWith("Build timed out")) {
-      console.log("[builder] Falling back to subprocess build");
-      onProgress?.("Still building... ⚙️");
-      return buildGameSubprocess(gameName, slug, isRevision, existingHtml, revisionRequest, conversationContext, onProgress);
-    }
-    throw err;
-  }
+  return buildGameViaJobQueue(gameName, slug, isRevision, existingHtml, revisionRequest, conversationContext, chatId, onProgress);
 }

@@ -7,6 +7,7 @@ A shared game studio for parents and kids. The parent runs a local server that c
 ## Prerequisites
 
 - macOS (tested on macOS 14+)
+- [Git](https://git-scm.com) (required by `bun create`; pre-installed on macOS via Xcode Command Line Tools)
 - [Bun](https://bun.sh) runtime — `curl -fsSL https://bun.sh/install | bash`
 - [Claude Code](https://claude.ai/code) installed and authenticated — `npm install -g @anthropic/claude-code && claude login`
 - An [Anthropic API key](https://console.anthropic.com/keys)

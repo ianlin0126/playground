@@ -26,11 +26,18 @@
       <h1>Claude Code</h1>
       <p class="subtitle">Playground uses Claude Code so you can build and fix games alongside your kid. Let's make sure it's ready.</p>
       <div id="claude-badge" class="check-badge wait">Checking...</div>
-      <div id="claude-instructions" style="display:none" class="instructions">
-        <p style="margin-bottom:12px;color:#334155;">Claude Code is not installed or authenticated. Please:</p>
+      <div id="claude-instructions-install" style="display:none" class="instructions">
+        <p style="margin-bottom:12px;color:#334155;">Claude Code is not installed. Please:</p>
         <ol>
-          <li>Install Claude Code: <a href="https://claude.ai/code" target="_blank">claude.ai/code</a></li>
+          <li>Download and install it at <a href="https://claude.ai/code" target="_blank">claude.ai/code</a></li>
           <li>Run <code>claude login</code> in your Terminal</li>
+        </ol>
+      </div>
+      <div id="claude-instructions-auth" style="display:none" class="instructions">
+        <p style="margin-bottom:12px;color:#334155;">Claude Code is installed but you're not logged in. Please:</p>
+        <ol>
+          <li>Open your Terminal</li>
+          <li>Run <code>claude login</code> and follow the prompts</li>
         </ol>
       </div>
       <div class="wizard-actions" style="margin-top:16px">
@@ -116,7 +123,7 @@
       <p class="subtitle">The guardian will use this name when chatting with your kid.</p>
       <div class="wizard-field">
         <label>Name</label>
-        <input type="text" id="sonname-input" placeholder="e.g. Clive" autocomplete="given-name">
+        <input type="text" id="sonname-input" placeholder="e.g. Alex" autocomplete="given-name">
       </div>
       <div class="error-msg" id="sonname-error"></div>
       <div class="wizard-actions">
@@ -176,11 +183,11 @@ function goTo(n) {
 
 async function checkClaude() {
   const badge = document.getElementById('claude-badge');
-  const instructions = document.getElementById('claude-instructions');
   const nextBtn = document.getElementById('claude-next');
   badge.className = 'check-badge wait';
   badge.textContent = 'Checking...';
-  instructions.style.display = 'none';
+  document.getElementById('claude-instructions-install').style.display = 'none';
+  document.getElementById('claude-instructions-auth').style.display = 'none';
   nextBtn.disabled = true;
 
   const res = await apiFetch('/api/setup/check-claude');
@@ -188,10 +195,14 @@ async function checkClaude() {
     badge.className = 'check-badge ok';
     badge.textContent = '✓ Claude Code is ready';
     nextBtn.disabled = false;
+  } else if (res.installed) {
+    badge.className = 'check-badge fail';
+    badge.textContent = '✗ Claude Code is not logged in';
+    document.getElementById('claude-instructions-auth').style.display = 'block';
   } else {
     badge.className = 'check-badge fail';
-    badge.textContent = res.installed ? '✗ Claude Code is not authenticated' : '✗ Claude Code is not installed';
-    instructions.style.display = 'block';
+    badge.textContent = '✗ Claude Code is not installed';
+    document.getElementById('claude-instructions-install').style.display = 'block';
   }
 }
 
