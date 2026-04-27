@@ -135,12 +135,18 @@ body {
 
 .chat-list { display: flex; flex-direction: column; gap: 10px; }
 
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 .chat-msg {
   background: white;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   padding: 12px 16px;
 }
+.chat-msg.slide-in { animation: slideDown 0.28s ease; }
 .chat-msg.flagged { border-color: #fca5a5; background: #fff5f5; }
 
 .chat-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
@@ -159,8 +165,11 @@ body {
 .game-info  { padding: 10px 12px; }
 .game-name  { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
 .game-date  { font-size: 11px; color: #94a3b8; margin-bottom: 6px; }
-.game-link  { font-size: 12px; color: #6366f1; text-decoration: none; font-weight: 500; }
+.game-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+.game-link    { font-size: 12px; color: #6366f1; text-decoration: none; font-weight: 500; }
 .game-link:hover { text-decoration: underline; }
+.game-delete  { background: none; border: none; font-size: 12px; color: #94a3b8; cursor: pointer; padding: 0; }
+.game-delete:hover { color: #dc2626; }
 
 /* ── Settings ────────────────────────────────────────────────────────────── */
 
@@ -277,3 +286,241 @@ body {
 
 .section { display: none; }
 .section.visible { display: block; }
+
+/* ── System Prompt ────────────────────────────────────────────────────────── */
+
+.prompt-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+.prompt-header-info h3 { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
+.prompt-header-info p  { font-size: 12px; color: #64748b; line-height: 1.4; }
+.prompt-header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.prompt-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 12px;
+  display: inline-block;
+  white-space: nowrap;
+}
+.prompt-badge.default { background: #f1f5f9; color: #475569; }
+.prompt-badge.custom  { background: #ede9fe; color: #7c3aed; }
+
+.prompt-pre {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 18px;
+  font-family: ui-monospace, 'SF Mono', 'Menlo', monospace;
+  font-size: 12px;
+  color: #334155;
+  white-space: pre-wrap;
+  line-height: 1.65;
+  max-height: 62vh;
+  overflow-y: auto;
+}
+
+.prompt-hint {
+  font-size: 13px;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  line-height: 1.45;
+}
+
+.prompt-textarea {
+  width: 100%;
+  min-height: 54vh;
+  background: white;
+  border: 1px solid #6366f1;
+  border-radius: 10px;
+  padding: 16px;
+  font-family: ui-monospace, 'SF Mono', 'Menlo', monospace;
+  font-size: 12px;
+  color: #0f172a;
+  line-height: 1.65;
+  resize: vertical;
+  outline: none;
+  display: block;
+  box-shadow: 0 0 0 3px #e0e7ff;
+}
+.prompt-textarea:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px #c7d2fe; }
+
+.prompt-actions { display: flex; gap: 10px; margin-top: 12px; }
+
+/* ── Status page blocks ──────────────────────────────────────────────────── */
+
+.status-block {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.status-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 18px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.status-block-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.status-stats-row {
+  display: flex;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.status-stat {
+  flex: 1;
+  padding: 14px 18px;
+  border-right: 1px solid #f1f5f9;
+}
+.status-stat:last-child { border-right: none; }
+
+.status-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 2px;
+}
+
+.status-stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 18px;
+  border-bottom: 1px solid #f8fafc;
+}
+.status-row:last-child { border-bottom: none; }
+
+.status-row-label {
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.status-row-value {
+  font-size: 13px;
+  color: #334155;
+  font-weight: 500;
+  text-align: right;
+}
+
+.status-link {
+  font-size: 12px;
+  color: #6366f1;
+  text-decoration: none;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.status-link:hover { text-decoration: underline; }
+
+.guardian-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+.guardian-pill::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.guardian-pill.running { background: #dcfce7; color: #16a34a; }
+.guardian-pill.running::before { background: #22c55e; }
+.guardian-pill.stopped { background: #f1f5f9; color: #64748b; }
+.guardian-pill.stopped::before { background: #94a3b8; }
+.guardian-pill.error { background: #fee2e2; color: #dc2626; }
+.guardian-pill.error::before { background: #ef4444; }
+
+/* ── Claude Code sessions ────────────────────────────────────────────────── */
+
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 18px;
+  border-bottom: 1px solid #f8fafc;
+}
+.session-row:last-child { border-bottom: none; }
+
+.session-pip {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 3px #dcfce7;
+}
+.session-info { flex: 1; }
+.session-pid  { font-size: 13px; font-weight: 600; color: #0f172a; }
+.session-time { font-size: 11px; color: #94a3b8; margin-top: 1px; font-family: ui-monospace, monospace; }
+.session-badge {
+  font-size: 11px; font-weight: 600;
+  background: #dcfce7; color: #16a34a;
+  padding: 2px 8px; border-radius: 12px;
+}
+
+.empty-state { text-align: center; padding: 56px 24px; }
+.empty-icon  { font-size: 40px; margin-bottom: 12px; }
+.empty-title { font-size: 15px; font-weight: 600; color: #475569; margin-bottom: 6px; }
+.empty-body  { font-size: 13px; color: #94a3b8; line-height: 1.6; }
+
+/* ── Modal ───────────────────────────────────────────────────────────────── */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal-card {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  width: 340px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+}
+
+.modal-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+.modal-body  { font-size: 13px; color: #64748b; margin-bottom: 24px; line-height: 1.5; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.btn-danger-solid { background: #dc2626; color: white; }

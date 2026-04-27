@@ -7,6 +7,17 @@
   <link rel="stylesheet" href="/parent/style.css">
 </head>
 <body>
+<div id="confirm-modal" class="modal-backdrop" style="display:none" onclick="if(event.target===this)closeModal()">
+  <div class="modal-card">
+    <div class="modal-title">Delete game?</div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger-solid" id="modal-confirm-btn">Delete</button>
+    </div>
+  </div>
+</div>
+
 <div class="shell">
   <div class="sidebar">
     <div class="sidebar-logo">🎮 Playground</div>
@@ -18,6 +29,9 @@
     </div>
     <div class="nav-item" data-section="games" onclick="showSection('games', this)">
       <span class="nav-icon">🎯</span> Games
+    </div>
+    <div class="nav-item" data-section="prompt" onclick="showSection('prompt', this)">
+      <span class="nav-icon">🤖</span> Guardian
     </div>
     <div class="nav-item" data-section="settings" onclick="showSection('settings', this)">
       <span class="nav-icon">⚙️</span> Settings
@@ -31,48 +45,75 @@
   <div class="main">
     <div class="topbar">
       <h1 id="section-title">Status</h1>
-      <button class="btn btn-primary" id="claude-btn" onclick="openClaude()" style="display:none">
-        ⚡ Open in Claude Code
-      </button>
     </div>
 
     <div class="content">
 
       <!-- STATUS -->
       <div class="section visible" id="section-status">
-        <div class="stat-grid">
-          <div class="stat-card">
-            <div class="stat-label">Guardian</div>
-            <div class="stat-value" id="stat-guardian">—</div>
-            <div class="stat-sub" id="stat-uptime"></div>
+
+        <!-- Guardian Agent -->
+        <div class="status-block">
+          <div class="status-block-header">
+            <div class="status-block-title">🤖 Guardian Agent</div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span class="guardian-pill stopped" id="guardian-pill">Stopped</span>
+              <button class="btn" id="toggle-btn" onclick="toggleGuardian()">...</button>
+            </div>
           </div>
-          <div class="stat-card">
-            <div class="stat-label">Messages today</div>
-            <div class="stat-value" id="stat-msgs">—</div>
-            <div class="stat-sub" id="stat-flagged"></div>
+          <div class="status-stats-row">
+            <div class="status-stat">
+              <div class="status-stat-value" id="stat-msgs">—</div>
+              <div class="status-stat-label">Messages today</div>
+            </div>
+            <div class="status-stat">
+              <div class="status-stat-value" id="stat-flagged">—</div>
+              <div class="status-stat-label">Flagged</div>
+            </div>
+            <div class="status-stat">
+              <div class="status-stat-value" id="stat-uptime">—</div>
+              <div class="status-stat-label">Uptime</div>
+            </div>
           </div>
-          <div class="stat-card">
-            <div class="stat-label">Games built</div>
-            <div class="stat-value" id="stat-games">—</div>
-            <div class="stat-sub" id="stat-lastgame"></div>
+          <div class="status-row">
+            <span class="status-row-label">Kid</span>
+            <span class="status-row-value" id="guardian-kid">—</span>
+          </div>
+          <div class="status-row">
+            <span class="status-row-label">Bot</span>
+            <span class="status-row-value" id="guardian-bot">—</span>
           </div>
         </div>
 
-        <div class="control-card">
-          <div class="control-info">
-            <h3>Telegram Bot</h3>
-            <p id="bot-info">Loading...</p>
+        <!-- Claude Code -->
+        <div class="status-block">
+          <div class="status-block-header">
+            <div class="status-block-title">💻 Claude Code</div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-ghost" onclick="loadClaudeSessions()">↻ Refresh</button>
+              <button class="btn btn-primary" onclick="openClaude()">⚡ New session</button>
+            </div>
           </div>
-          <button class="btn" id="toggle-btn" onclick="toggleGuardian()">...</button>
+          <div id="claude-sessions-list">
+            <div class="status-row"><span style="color:#94a3b8;font-size:13px">Loading...</span></div>
+          </div>
         </div>
 
-        <div class="control-card">
-          <div class="control-info">
-            <h3>Game Server</h3>
-            <p id="server-url">Loading...</p>
+        <!-- Games -->
+        <div class="status-block">
+          <div class="status-block-header">
+            <div class="status-block-title">🎯 Games</div>
           </div>
-          <button class="btn btn-ghost" onclick="copyServerUrl(event)">Copy URL</button>
+          <div class="status-row">
+            <span class="status-row-label">Total built</span>
+            <a href="#" class="status-row-value status-link" id="stat-games" onclick="showSection('games',document.querySelector('[data-section=games]'));return false">—</a>
+          </div>
+          <div class="status-row">
+            <span class="status-row-label">Game server</span>
+            <a class="status-row-value status-link" id="server-url" href="#" target="_blank">—</a>
+          </div>
         </div>
+
       </div>
 
       <!-- CHATS -->
@@ -86,6 +127,34 @@
       <div class="section" id="section-games">
         <div class="games-grid" id="games-grid">
           <p style="color:#94a3b8;font-size:13px">Loading games...</p>
+        </div>
+      </div>
+
+      <!-- PROMPT -->
+      <div class="section" id="section-prompt">
+        <div class="prompt-header">
+          <div class="prompt-header-info">
+            <h3>Guardian Personality</h3>
+            <p>Instructions Claude follows when chatting with Clive.<br>Changes take effect on the next Telegram message.</p>
+          </div>
+          <div class="prompt-header-actions">
+            <span class="prompt-badge default" id="prompt-badge">Default</span>
+            <button class="btn btn-ghost" id="prompt-edit-btn" onclick="enterPromptEditMode()">Edit</button>
+            <button class="btn btn-danger" id="prompt-reset-btn" style="display:none" onclick="resetPrompt()">Reset to Default</button>
+          </div>
+        </div>
+
+        <div id="prompt-view">
+          <pre class="prompt-pre" id="prompt-rendered">Loading...</pre>
+        </div>
+
+        <div id="prompt-editor" style="display:none">
+          <p class="prompt-hint">✏️ Edit the guardian's personality below. Use plain text — no special syntax needed. The builder automatically receives game details separately.</p>
+          <textarea class="prompt-textarea" id="prompt-textarea" spellcheck="false"></textarea>
+          <div class="prompt-actions">
+            <button class="btn btn-primary" onclick="savePrompt()">Save Changes</button>
+            <button class="btn btn-ghost" onclick="cancelPromptEdit()">Cancel</button>
+          </div>
         </div>
       </div>
 
@@ -142,8 +211,12 @@
 </div>
 
 <script>
-const SECTIONS = ['status', 'chats', 'games', 'settings'];
-const TITLES   = { status:'Status', chats:'Conversations', games:'Games', settings:'Settings' };
+if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+  location.replace('http://localhost:' + location.port + location.pathname + location.search);
+}
+
+const SECTIONS = ['status', 'chats', 'games', 'prompt', 'settings'];
+const TITLES   = { status:'Status', chats:'Conversations', games:'Games', prompt:'Guardian System Prompt', settings:'Settings' };
 
 let _lanUrl = '';
 let _guardianStatus = 'stopped';
@@ -155,9 +228,9 @@ function showSection(name, el) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (el) el.classList.add('active');
   document.getElementById('section-title').textContent = TITLES[name];
-  document.getElementById('claude-btn').style.display = (name === 'status') ? 'inline-flex' : 'none';
-  if (name === 'chats') loadChats();
+  if (name === 'chats') startChatPolling(); else stopChatPolling();
   if (name === 'games') loadGames();
+  if (name === 'prompt') loadPrompt();
   if (name === 'settings') loadSettings();
 }
 
@@ -183,27 +256,32 @@ async function refreshStatus() {
     data.status === 'running' ? 'Guardian running' :
     data.status === 'error'   ? 'Guardian error'   : 'Guardian stopped';
 
-  document.getElementById('stat-guardian').textContent = data.status === 'running' ? 'Running' : data.status === 'error' ? 'Error' : 'Stopped';
-  document.getElementById('stat-guardian').style.color = data.status === 'running' ? '#16a34a' : data.status === 'error' ? '#dc2626' : '#64748b';
-  document.getElementById('stat-uptime').textContent = data.status === 'running' && data.uptime ? `Started ${formatUptime(data.uptime)} ago` : '';
-  document.getElementById('stat-msgs').textContent = data.messagesToday ?? 0;
-  document.getElementById('stat-flagged').textContent = data.flaggedToday ? `${data.flaggedToday} flagged` : 'None flagged';
-  document.getElementById('stat-games').textContent = data.gamesBuilt ?? 0;
-  document.getElementById('stat-lastgame').textContent = data.lastGame ? `Last: ${data.lastGame}` : '';
-
-  document.getElementById('bot-info').textContent =
-    `${data.sonName || '—'} (ID ${data.sonTelegramId || '—'})`;
+  const pill = document.getElementById('guardian-pill');
+  pill.className = 'guardian-pill ' + (data.status === 'error' ? 'error' : data.status === 'running' ? 'running' : 'stopped');
+  pill.textContent = data.status === 'running' ? 'Running' : data.status === 'error' ? 'Error' : 'Stopped';
 
   const toggleBtn = document.getElementById('toggle-btn');
   if (data.status === 'running') {
-    toggleBtn.textContent = 'Stop Guardian';
+    toggleBtn.textContent = 'Stop';
     toggleBtn.className = 'btn btn-danger';
   } else {
-    toggleBtn.textContent = 'Start Guardian';
+    toggleBtn.textContent = 'Start';
     toggleBtn.className = 'btn btn-success';
   }
 
-  document.getElementById('server-url').textContent = data.lanUrl || 'localhost:3000';
+  document.getElementById('stat-msgs').textContent = data.messagesToday ?? 0;
+  document.getElementById('stat-flagged').textContent = data.flaggedToday || 0;
+  document.getElementById('stat-uptime').textContent = data.status === 'running' && data.uptime ? formatUptime(data.uptime) : '—';
+
+  document.getElementById('guardian-kid').textContent =
+    data.sonName ? `${data.sonName} (ID ${data.sonTelegramId || '—'})` : '—';
+  document.getElementById('guardian-bot').textContent =
+    data.botId ? `ID ${data.botId}` : 'Not configured';
+
+  document.getElementById('stat-games').textContent = data.gamesBuilt ?? 0;
+  const serverLink = document.getElementById('server-url');
+  serverLink.textContent = data.lanUrl || '—';
+  if (data.lanUrl) serverLink.href = data.lanUrl;
 }
 
 async function toggleGuardian() {
@@ -212,13 +290,6 @@ async function toggleGuardian() {
   await refreshStatus();
 }
 
-function copyServerUrl(e) {
-  navigator.clipboard.writeText(_lanUrl).then(() => {
-    const btn = e.currentTarget;
-    btn.textContent = 'Copied!';
-    setTimeout(() => btn.textContent = 'Copy URL', 1500);
-  });
-}
 
 // ── Chats ─────────────────────────────────────────────────────────────────
 
@@ -233,23 +304,61 @@ function timeAgo(isoStr) {
   return d.toLocaleDateString();
 }
 
+function renderTurn(t, animate) {
+  return `<div class="chat-msg ${t.flagged ? 'flagged' : ''} ${animate ? 'slide-in' : ''}">
+    <div class="chat-meta">
+      <span class="chat-sender ${t.direction === 'guardian' ? 'guardian' : ''}">
+        ${t.direction === 'kid' ? '👦 Kid' : '🤖 Guardian'}
+        ${t.flagged ? '<span class="flag-badge">⚠ flagged</span>' : ''}
+      </span>
+      <span class="chat-time">${timeAgo(t.ts)}</span>
+    </div>
+    <div class="chat-text">${escHtml(t.message)}</div>
+  </div>`;
+}
+
+let _chatPollInterval = null;
+let _latestTurnId = 0;
+
 async function loadChats() {
   const turns = await fetch('/api/conversations').then(r => r.json()).catch(() => []);
   const list = document.getElementById('chat-list');
-  if (!turns.length) { list.innerHTML = '<p style="color:#94a3b8;font-size:13px">No conversations yet.</p>'; return; }
+  if (!turns.length) {
+    list.innerHTML = '<p style="color:#94a3b8;font-size:13px">No conversations yet.</p>';
+    _latestTurnId = 0;
+    return;
+  }
+  list.innerHTML = turns.map(t => renderTurn(t, false)).join('');
+  _latestTurnId = turns[0].id;
+}
 
-  list.innerHTML = turns.map(t => `
-    <div class="chat-msg ${t.flagged ? 'flagged' : ''}">
-      <div class="chat-meta">
-        <span class="chat-sender ${t.direction === 'guardian' ? 'guardian' : ''}">
-          ${t.direction === 'kid' ? '👦 Kid' : '🤖 Guardian'}
-          ${t.flagged ? '<span class="flag-badge">⚠ flagged</span>' : ''}
-        </span>
-        <span class="chat-time">${timeAgo(t.ts)}</span>
-      </div>
-      <div class="chat-text">${escHtml(t.message)}</div>
-    </div>
-  `).join('');
+async function pollChats() {
+  const turns = await fetch('/api/conversations').then(r => r.json()).catch(() => []);
+  if (!turns.length || turns[0].id <= _latestTurnId) return;
+
+  const list = document.getElementById('chat-list');
+  const newTurns = turns.filter(t => t.id > _latestTurnId).reverse();
+
+  if (list.querySelector('p')) list.innerHTML = '';
+
+  newTurns.forEach(t => {
+    const el = document.createElement('div');
+    el.innerHTML = renderTurn(t, true);
+    list.insertBefore(el.firstElementChild, list.firstChild);
+  });
+
+  _latestTurnId = turns[0].id;
+}
+
+function startChatPolling() {
+  loadChats();
+  if (_chatPollInterval) return;
+  _chatPollInterval = setInterval(pollChats, 5000);
+}
+
+function stopChatPolling() {
+  clearInterval(_chatPollInterval);
+  _chatPollInterval = null;
 }
 
 function escHtml(str) {
@@ -273,6 +382,23 @@ function gameEmoji(name) {
   return '🎮';
 }
 
+function closeModal() {
+  document.getElementById('confirm-modal').style.display = 'none';
+}
+
+function deleteGame(slug, name) {
+  document.getElementById('modal-body').textContent = `"${name}" will be removed permanently.`;
+  const btn = document.getElementById('modal-confirm-btn');
+  btn.onclick = async () => {
+    closeModal();
+    const res = await fetch(`/api/games/${slug}`, { method: 'DELETE' })
+      .then(r => r.json()).catch(() => ({ error: 'Network error' }));
+    if (res.ok) { loadGames(); }
+    else { alert('Error: ' + (res.error || 'Could not delete game')); }
+  };
+  document.getElementById('confirm-modal').style.display = 'flex';
+}
+
 async function loadGames() {
   const games = await fetch('/api/games').then(r => r.json()).catch(() => []);
   const grid = document.getElementById('games-grid');
@@ -284,10 +410,37 @@ async function loadGames() {
       <div class="game-info">
         <div class="game-name">${escHtml(g.name)}</div>
         <div class="game-date">${new Date(g.builtAt).toLocaleDateString()}</div>
-        <a class="game-link" href="/games/${g.slug}/" target="_blank">▶ Play</a>
+        <div class="game-actions">
+          <a class="game-link" href="/games/${escHtml(g.slug)}/" target="_blank">▶ Play</a>
+          <button class="game-delete" onclick="deleteGame('${escHtml(g.slug)}', '${escHtml(g.name).replace(/'/g, "\\'")}')">🗑 Delete</button>
+        </div>
       </div>
     </div>
   `).join('');
+}
+
+// ── Claude Code sessions ──────────────────────────────────────────────────
+
+async function loadClaudeSessions() {
+  const data = await fetch('/api/claude-sessions').then(r => r.json()).catch(() => ({ sessions: [] }));
+  const sessions = data.sessions || [];
+  const list = document.getElementById('claude-sessions-list');
+
+  const newHtml = !sessions.length
+    ? '<div class="status-row"><span style="color:#94a3b8;font-size:13px">No sessions running</span></div>'
+    : sessions.map(s => `
+    <div class="session-row">
+      <div class="session-pip"></div>
+      <div class="session-info">
+        <div class="session-pid">PID ${s.pid}</div>
+        <div class="session-time">${s.startedAt || ''}</div>
+      </div>
+      <span class="session-badge">Running</span>
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="openClaudeSession(${s.pid})">Open</button>
+    </div>
+  `).join('');
+
+  if (list.innerHTML !== newHtml) list.innerHTML = newHtml;
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────
@@ -334,9 +487,93 @@ async function openClaude() {
   await fetch('/api/open-claude', { method: 'POST' });
 }
 
+async function openClaudeSession(pid) {
+  await fetch('/api/open-claude-session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pid }),
+  });
+}
+
+// ── System Prompt ─────────────────────────────────────────────────────────
+
+let _promptData = null;
+let _promptEditMode = false;
+
+async function loadPrompt() {
+  const data = await fetch('/api/prompt').then(r => r.json()).catch(() => null);
+  if (!data) return;
+  _promptData = data;
+  _promptEditMode = false;
+  renderPromptSection();
+}
+
+function renderPromptSection() {
+  if (!_promptData) return;
+  const { rendered, isCustom } = _promptData;
+
+  const badge = document.getElementById('prompt-badge');
+  badge.textContent = isCustom ? '✏️ Custom' : '📋 Default';
+  badge.className = 'prompt-badge ' + (isCustom ? 'custom' : 'default');
+  document.getElementById('prompt-reset-btn').style.display = isCustom ? 'inline-flex' : 'none';
+  document.getElementById('prompt-edit-btn').style.display = _promptEditMode ? 'none' : 'inline-flex';
+
+  const view = document.getElementById('prompt-view');
+  const editor = document.getElementById('prompt-editor');
+
+  if (_promptEditMode) {
+    view.style.display = 'none';
+    editor.style.display = '';
+    // Pre-populate with custom template if exists, else default rendered text
+    const startText = isCustom && _promptData.template ? _promptData.template : _promptData.defaultRendered;
+    document.getElementById('prompt-textarea').value = startText;
+  } else {
+    view.style.display = '';
+    editor.style.display = 'none';
+    document.getElementById('prompt-rendered').textContent = rendered;
+  }
+}
+
+function enterPromptEditMode() {
+  _promptEditMode = true;
+  renderPromptSection();
+}
+
+function cancelPromptEdit() {
+  _promptEditMode = false;
+  renderPromptSection();
+}
+
+async function savePrompt() {
+  const text = document.getElementById('prompt-textarea').value.trim();
+  if (!text) return;
+  const btn = document.querySelector('#prompt-editor .btn-primary');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  const res = await fetch('/api/prompt', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: text }),
+  }).then(r => r.json()).catch(() => ({ error: 'Network error' }));
+  btn.disabled = false;
+  btn.textContent = 'Save Changes';
+  if (res.ok) {
+    await loadPrompt();
+  } else {
+    alert('Error saving prompt: ' + (res.error || 'Unknown error'));
+  }
+}
+
+async function resetPrompt() {
+  if (!confirm('Reset to the built-in guardian personality? Your custom prompt will be deleted.')) return;
+  await fetch('/api/prompt', { method: 'DELETE' });
+  await loadPrompt();
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────
 
 refreshStatus();
+loadClaudeSessions();
 setInterval(refreshStatus, 5000);
 </script>
 </body>
