@@ -37,13 +37,16 @@ function loadEnv(key: string): string {
 
 function detectLanIp(): string {
   const nets = networkInterfaces();
+  const candidates: string[] = [];
   for (const iface of Object.values(nets)) {
     if (!iface) continue;
     for (const addr of iface) {
-      if (addr.family === "IPv4" && !addr.internal) return addr.address;
+      if (addr.family === "IPv4" && !addr.internal) candidates.push(addr.address);
     }
   }
-  return "localhost";
+  // Prefer typical home LAN ranges (192.168.0.x or 192.168.1.x) over VPN/VM ranges
+  const homeLan = candidates.find(ip => /^192\.168\.(0|1)\./.test(ip));
+  return homeLan ?? candidates[0] ?? "localhost";
 }
 
 export const config = {

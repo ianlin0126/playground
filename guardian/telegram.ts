@@ -1,8 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { readdirSync, readFileSync, writeFileSync, existsSync } from "fs";
+import { join } from "path";
 import { config } from "./config";
-import { insertTurn, getRecentTurns } from "./db";
+import { insertTurn, getRecentTurns, upsertSummary, getLatestSummary } from "./db";
 import { getGuardianSystemPrompt } from "./prompts";
-import { buildGame } from "./builder";
+import { buildGame, BuildNotPickedUpError, getExistingGames } from "./builder";
 
 // ── State ─────────────────────────────────────────────────────────────────
 
@@ -71,7 +73,59 @@ async function downloadPhoto(fileId: string): Promise<{ base64: string; mimeType
 // ── Conversation loop ─────────────────────────────────────────────────────
 
 const conversationHistory: Anthropic.Messages.MessageParam[] = [];
-let pendingGameBuild: { gameName: string; revisionRequest?: string } | null = null;
+let pendingGameBuild: { gameName: string; gameId?: string; revisionRequest?: string } | null = null;
+let _summaryInjected = false;
+
+// ── Conversation summarization ────────────────────────────────────────────
+
+const SUMMARY_TRIGGER = 60;   // compress when history exceeds this
+const SUMMARY_COMPRESS = 30;  // number of old turns to summarize
+
+async function compressOldTurns(anthropic: Anthropic): Promise<void> {
+  // Strip the existing summary pair at position 0 if present
+  const startIdx = _summaryInjected ? 2 : 0;
+  const oldTurns = conversationHistory.slice(startIdx, startIdx + SUMMARY_COMPRESS);
+  if (oldTurns.length < 10) return; // not enough to bother
+
+  const transcript = oldTurns
+    .map((m) => {
+      const speaker = m.role === "user" ? config.sonName : "Guardian";
+      const text = typeof m.content === "string" ? m.content : "[media]";
+      return `${speaker}: ${text}`;
+    })
+    .join("\n");
+
+  try {
+    const res = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 300,
+      messages: [
+        {
+          role: "user",
+          content: `Summarize this conversation between a child (${config.sonName}, age 7-8) and a game-building assistant in 3-5 sentences. Focus on: games discussed or built, the child's preferences and interests, any recurring themes or requests, and the overall relationship tone. Be warm and specific.\n\n${transcript}`,
+        },
+      ],
+    });
+
+    if (!res.content.length || res.content[0].type !== "text") return;
+    const summaryText = res.content[0].text.trim();
+
+    // Remove old summary pair + compressed turns in-place
+    conversationHistory.splice(0, startIdx + SUMMARY_COMPRESS);
+
+    // Inject new summary pair at position 0 (user must come first for alternating-role requirement)
+    conversationHistory.unshift(
+      { role: "user" as const, content: `[Context from earlier conversations with ${config.sonName}]\n${summaryText}` },
+      { role: "assistant" as const, content: "Got it! I remember all of that. 😊" }
+    );
+
+    _summaryInjected = true;
+    upsertSummary(summaryText);
+    console.log(`[telegram] Conversation compressed — summary saved (${summaryText.length} chars)`);
+  } catch (err) {
+    console.error("[telegram] Summarization failed (non-fatal):", err);
+  }
+}
 
 async function handleMessage(
   anthropic: Anthropic,
@@ -91,32 +145,49 @@ async function handleMessage(
 
   if (pendingGameBuild !== null) {
     if (isConfirmation(text)) {
-      const { gameName, revisionRequest } = pendingGameBuild;
+      const { gameName, gameId, revisionRequest } = pendingGameBuild;
       pendingGameBuild = null;
-      await sendMessage(chatId, "Ok let me make it!! Give me a sec... 🔨⭐");
-      insertTurn("guardian", "Ok let me make it!! Give me a sec... 🔨⭐");
+      conversationHistory.push({ role: "user", content: text });
+      const startMsg = "Ok let me make it!! Give me a sec... 🔨⭐";
+      await sendMessage(chatId, startMsg);
+      insertTurn("guardian", startMsg);
+      conversationHistory.push({ role: "assistant", content: startMsg });
       try {
         const recentContext = conversationHistory.slice(-10).map((m) => ({
           role: m.role,
           content: typeof m.content === "string" ? m.content : "[media]",
         }));
-        const { url } = await buildGame(gameName, revisionRequest, (msg) => sendMessage(chatId, msg).catch(() => {}), recentContext);
+        const { url, jobPath } = await buildGame(gameName, chatId, revisionRequest, (msg) => sendMessage(chatId, msg).catch(() => {}), recentContext, gameId);
         const reply = `Here it is!! Open this on your tablet: ${url} 🎉`;
         await sendMessage(chatId, reply);
         insertTurn("guardian", reply);
+        conversationHistory.push({ role: "assistant", content: reply });
+        try {
+          const job = JSON.parse(readFileSync(jobPath, "utf8"));
+          job.telegramSentAt = new Date().toISOString();
+          writeFileSync(jobPath, JSON.stringify(job, null, 2));
+        } catch { /* non-fatal */ }
       } catch (err) {
         console.error("Build failed:", err);
-        const reply = `Oops, something went a little wrong! 😅 Want to try again? Just say yes!`;
+        let reply: string;
+        if (err instanceof BuildNotPickedUpError) {
+          reply = `Hmm, I hit a little snag! 😅 Want to try again? Just say yes and I'll get right on it! 🔨`;
+        } else {
+          reply = `Oops, something went a little wrong! 😅 Want to try again? Just say yes!`;
+        }
         await sendMessage(chatId, reply);
         insertTurn("guardian", reply);
-        pendingGameBuild = { gameName, revisionRequest };
+        conversationHistory.push({ role: "assistant", content: reply });
+        pendingGameBuild = { gameName, gameId, revisionRequest };
       }
       return;
     } else {
       pendingGameBuild = null;
+      conversationHistory.push({ role: "user", content: text });
       const cancelMsg = "No problem! 😊 What would you like to do?";
       await sendMessage(chatId, cancelMsg);
       insertTurn("guardian", cancelMsg);
+      conversationHistory.push({ role: "assistant", content: cancelMsg });
       return;
     }
   }
@@ -147,7 +218,7 @@ async function handleMessage(
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 512,
-    system: getGuardianSystemPrompt(config.sonName),
+    system: getGuardianSystemPrompt(config.sonName, getExistingGames()),
     messages: messagesForApi,
   });
 
@@ -156,16 +227,50 @@ async function handleMessage(
     return;
   }
 
-  const reply = response.content[0].text;
-  const tokenMatch = reply.match(/^GAME_NAME:\s*(.+)$/m);
-  if (tokenMatch) {
-    pendingGameBuild = { gameName: tokenMatch[1].trim(), revisionRequest: text || undefined };
+  let reply = response.content[0].text;
+
+  // Safety net: if Claude used build-in-progress language without including a GAME_NAME: token,
+  // it's a hallucinated build — re-prompt once to get a corrected response.
+  const nameMatch = () => reply.match(/^GAME_NAME:\s*(.+)$/m);
+  const BUILD_HALLUCINATION_RE = /\b(right now|working on it|on it[!,. ]|give me a sec|i'?m (building|making|updating|creating)|building it|making it|updating it)\b/i;
+  if (!nameMatch() && BUILD_HALLUCINATION_RE.test(reply)) {
+    console.warn("[telegram] Build hallucination detected — re-prompting Claude");
+    const corrected = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 512,
+      system: getGuardianSystemPrompt(config.sonName, getExistingGames()),
+      messages: [
+        ...messagesForApi,
+        { role: "assistant" as const, content: reply },
+        { role: "user" as const, content: "[System: Your response implied a build is in progress but no GAME_NAME: token was included, so nothing will actually be built. Please send a corrected response: either include the GAME_NAME: token if you are ready to build and ask 'Should I make it now? 🎮', or reply without any build-in-progress language.]" },
+      ],
+    });
+    if (corrected.content.length && corrected.content[0].type === "text") {
+      reply = corrected.content[0].text;
+    }
   }
 
-  const cleanReply = reply.replace(/^GAME_NAME:\s*.+\n?/m, "").trim();
+  const tokenMatch = nameMatch();
+  const idMatch = reply.match(/^GAME_ID:\s*(.+)$/m);
+  if (tokenMatch) {
+    pendingGameBuild = {
+      gameName: tokenMatch[1].trim(),
+      gameId: idMatch ? idMatch[1].trim() : undefined,
+      revisionRequest: text || undefined,
+    };
+  }
+
+  const cleanReply = reply
+    .replace(/^GAME_ID:\s*.+\n?/m, "")
+    .replace(/^GAME_NAME:\s*.+\n?/m, "")
+    .trim();
   conversationHistory.push({ role: "assistant", content: cleanReply });
   insertTurn("guardian", cleanReply);
   await sendMessage(chatId, cleanReply);
+
+  if (conversationHistory.length > SUMMARY_TRIGGER) {
+    compressOldTurns(anthropic).catch((e) => console.error("[telegram] compressOldTurns error:", e));
+  }
 }
 
 type TelegramUpdate = {
@@ -235,14 +340,28 @@ export function start(): void {
 
   const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
-  // Seed conversation history from DB so the guardian remembers past turns
-  conversationHistory.length = 0; // clear in case of restart
-  const savedTurns = getRecentTurns(40).reverse();
-  for (const turn of savedTurns) {
-    conversationHistory.push({
-      role: turn.direction === "kid" ? "user" : "assistant",
-      content: turn.message,
-    });
+  // Seed conversation history from DB, using summary if available
+  conversationHistory.length = 0;
+  _summaryInjected = false;
+
+  const summary = getLatestSummary();
+  if (summary) {
+    // Inject summary pair at position 0 (user first for alternating-role requirement)
+    conversationHistory.push(
+      { role: "user", content: `[Context from earlier conversations with ${config.sonName}]\n${summary.content}` },
+      { role: "assistant", content: "Got it! I remember all of that. 😊" }
+    );
+    _summaryInjected = true;
+    // Load fewer recent turns since summary covers the rest
+    const savedTurns = getRecentTurns(30).reverse();
+    for (const turn of savedTurns) {
+      conversationHistory.push({ role: turn.direction === "kid" ? "user" : "assistant", content: turn.message });
+    }
+  } else {
+    const savedTurns = getRecentTurns(40).reverse();
+    for (const turn of savedTurns) {
+      conversationHistory.push({ role: turn.direction === "kid" ? "user" : "assistant", content: turn.message });
+    }
   }
 
   pollLoop(anthropic)
@@ -261,4 +380,66 @@ export function stop(): void {
   _stopSignal = true;
   state.status = "stopped";
   state.startedAt = null;
+}
+
+const ZOMBIE_THRESHOLD_MS = 10 * 60 * 1000;
+
+export async function resetZombieJobs(): Promise<void> {
+  const jobsDir = join(config.playgroundDir, ".guardian", "jobs");
+  if (!existsSync(jobsDir)) return;
+  try {
+    const files = readdirSync(jobsDir).filter((f) => f.endsWith(".json"));
+    for (const f of files) {
+      const filePath = join(jobsDir, f);
+      let job: Record<string, unknown>;
+      try { job = JSON.parse(readFileSync(filePath, "utf8")); } catch { continue; }
+      if (
+        job.status === "in_progress" &&
+        job.pickedUpAt &&
+        new Date(job.pickedUpAt as string).getTime() < Date.now() - ZOMBIE_THRESHOLD_MS
+      ) {
+        job.status = "pending";
+        job.pickedUpAt = null;
+        job.claimedBy = null;
+        writeFileSync(filePath, JSON.stringify(job, null, 2));
+        console.log(`[telegram] Zombie job reset to pending on startup: ${f}`);
+      }
+    }
+  } catch (err) {
+    console.error("[telegram] resetZombieJobs error:", err);
+  }
+}
+
+export async function recoverOrphanedJobs(): Promise<void> {
+  const jobsDir = join(config.playgroundDir, ".guardian", "jobs");
+  if (!existsSync(jobsDir)) return;
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000; // 24 hours — catch jobs completed while guardian was down
+  try {
+    const files = readdirSync(jobsDir).filter((f) => f.endsWith(".json"));
+    for (const f of files) {
+      const filePath = join(jobsDir, f);
+      let job: Record<string, unknown>;
+      try { job = JSON.parse(readFileSync(filePath, "utf8")); }
+      catch { continue; }
+      if (
+        job.status === "done" &&
+        job.chatId &&
+        !job.telegramSentAt &&
+        job.url &&
+        new Date(job.completedAt as string).getTime() > cutoff
+      ) {
+        console.log(`[telegram] Recovering orphaned job ${f}, re-sending URL...`);
+        try {
+          await sendMessage(job.chatId as number, `Here it is!! Open this on your tablet: ${job.url} 🎉`);
+          job.telegramSentAt = new Date().toISOString();
+          writeFileSync(filePath, JSON.stringify(job, null, 2));
+          console.log(`[telegram] Orphaned job ${f} recovered`);
+        } catch (err) {
+          console.error(`[telegram] Failed to recover orphaned job ${f}:`, err);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[telegram] recoverOrphanedJobs error:", err);
+  }
 }

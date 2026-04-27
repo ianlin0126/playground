@@ -1,10 +1,10 @@
-import { resolve, sep } from "path";
+import { resolve, sep, join } from "path";
 import { existsSync } from "fs";
-import { join } from "path";
 import { config, getMissingFields } from "./config";
 import { initDb } from "./db";
-import { start as startTelegram } from "./telegram";
+import { start as startTelegram, recoverOrphanedJobs, resetZombieJobs } from "./telegram";
 import { handleApiRequest } from "./api";
+import { loadCustomPromptFromDisk } from "./prompts";
 
 function startServer(): ReturnType<typeof Bun.serve> {
   const root = resolve(config.playgroundDir);
@@ -62,6 +62,7 @@ function startServer(): ReturnType<typeof Bun.serve> {
 
 async function main(): Promise<void> {
   initDb(config.playgroundDir);
+  loadCustomPromptFromDisk(config.playgroundDir);
   const server = startServer();
 
   const missing = getMissingFields(config.playgroundDir);
@@ -70,7 +71,12 @@ async function main(): Promise<void> {
   } else {
     console.log(`✅ Guardian started for ${config.sonName}`);
     console.log(`📱 Accepting messages from Telegram ID: ${config.sonTelegramId}`);
+    resetZombieJobs().catch((err) => console.error("[guardian] resetZombieJobs failed:", err));
+    recoverOrphanedJobs().catch((err) => console.error("[guardian] recoverOrphanedJobs failed:", err));
     startTelegram();
+    setInterval(() => {
+      recoverOrphanedJobs().catch((err) => console.error("[guardian] periodic recoverOrphanedJobs failed:", err));
+    }, 5 * 60 * 1000);
   }
 
   process.on("SIGINT", () => {
