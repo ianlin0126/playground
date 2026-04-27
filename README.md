@@ -1,11 +1,11 @@
 # Playground — AI Game Studio for Kids
 
-A home game studio run by parents and kids together. Your kid chats with a Telegram bot to request games; Claude builds them as self-contained web pages served on your home WiFi so the kid can play on a tablet. You monitor conversations and manage games from a local dashboard.
+A home game studio run by parents and kids together. Your kid chats with a Telegram bot to describe a game to build; Claude builds them as self-contained web pages served on your home WiFi so the kid can play on a tablet or a smartphone. You monitor conversations and manage games from a local dashboard.
 
 **How it works:**
 
 ```
-Kid (Telegram) → Guardian server → Claude Code (on your Mac) → Game URL sent back to kid's tablet
+Kid (Telegram) → Guardian server → Claude Code (on your Mac) → Game URL sent back to kid's device
 ```
 
 ---
@@ -19,7 +19,7 @@ Kid (Telegram) → Guardian server → Claude Code (on your Mac) → Game URL se
 | [Bun](https://bun.sh) | `curl -fsSL https://bun.sh/install | bash` |
 | [Claude Code](https://claude.ai/code) | `npm install -g @anthropic/claude-code` then `claude login` |
 | [Anthropic API key](https://console.anthropic.com/keys) | Create one at console.anthropic.com |
-| Telegram account | For both parent and kid |
+| Telegram account | Create an account for your kid |
 
 > Claude Code requires Node.js to install. If `npm` isn't available, install Node.js first from [nodejs.org](https://nodejs.org).
 
