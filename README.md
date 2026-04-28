@@ -16,10 +16,10 @@ Kid (Telegram) → Guardian server → Claude Code (on your Mac) → Game URL se
 |---|---|
 | macOS 14+ | — |
 | Git | Pre-installed on macOS (`xcode-select --install` if missing) |
-| [Bun](https://bun.sh) | `curl -fsSL https://bun.sh/install | bash` |
-| [Claude Code](https://claude.ai/code) | `curl -fsSL https://claude.ai/install.sh | bash` |
-| [Anthropic API key](https://console.anthropic.com/keys) | Create one at console.anthropic.com |
-| Telegram account | Create an account for your kid |
+| [Bun](https://bun.sh) | `curl -fsSL https://bun.sh/install \| bash` |
+| [Claude Code](https://code.claude.com/docs/en/quickstart) | `curl -fsSL https://claude.ai/install.sh \| bash` |
+| [Anthropic API key](https://platform.claude.com/dashboard) | Create one at platform.claude.com |
+| [Telegram](https://web.telegram.org/) account | Create an account for your kid |
 
 ---
 
