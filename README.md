@@ -19,7 +19,7 @@ Kid (Telegram) → Guardian server → Claude Code (on your Mac) → Game URL se
 | [Bun](https://bun.sh) | `curl -fsSL https://bun.sh/install \| bash` |
 | [Claude Code](https://code.claude.com/docs/en/quickstart) | `curl -fsSL https://claude.ai/install.sh \| bash` |
 | [Anthropic API key](https://platform.claude.com/dashboard) | Create one at platform.claude.com |
-| [Telegram](https://web.telegram.org/) account | Create an account for your kid |
+| [Telegram](https://web.telegram.org/) | Create an account for your kid |
 
 ---
 
@@ -40,12 +40,12 @@ Open **http://localhost:3000/parent** in your browser. The wizard walks you thro
 1. Verifying Claude Code is installed and authenticated
 2. Entering your Anthropic API key
 3. Creating a Telegram bot via [@BotFather](https://t.me/BotFather) (takes ~2 minutes)
-4. Getting your kid's Telegram ID — they send one message to the bot and it's detected automatically
+4. Creating a [Telegram](https://web.telegram.org/) account for your kid, then sending one message to the bot — the Telegram ID of the account is detected automatically
 5. Saving everything to `.env` and starting the guardian
 
 ### Step 3 — Open Claude Code in the project directory
 
-Games are built by Claude Code, not the server. Open a terminal in `my-playground/` and run:
+Games are built by Claude Code, not the server. Open a terminal in `playground/` and run:
 
 ```bash
 claude
@@ -65,7 +65,7 @@ Keep this session open whenever your kid might be requesting games. When a build
 - `bun run server` in one terminal (the guardian — handles Telegram and serves games)
 - `claude` in another terminal opened in the project directory (builds games when requested)
 
-**Parent dashboard:** http://localhost:3000/parent — monitor conversations, see built games, manage settings.
+**Parent dashboard:** http://localhost:3000/parent — monitor conversations, see built games, manage settings, and publish games on GitHub Pages for free.
 
 **Playing on a tablet:** Games are served at `http://<your-mac-ip>:3000` — accessible from any device on the same WiFi. The dashboard shows your exact LAN URL.
 
@@ -89,7 +89,7 @@ The Telegram bot resumes automatically when the server starts, as long as `.env`
 
 ## Publishing Games to GitHub Pages
 
-Games built locally are only accessible on your home WiFi. GitHub Pages lets you publish them to a free public URL so your kid can play from anywhere — a friend's house, a grandparent's iPad, or their school Chromebook.
+Games built locally are only accessible on your home WiFi. GitHub Pages lets you publish them to a free public URL so your kid can play from anywhere, and share their work with others to play.
 
 ### How it works
 
@@ -127,7 +127,7 @@ GitHub needs a token to let the dashboard push game files on your behalf.
 
 Open the **Games** section of the parent dashboard and click **Set up →** in the banner at the top. Enter your token and repository name (`owner/repo`, e.g. `ianlin0126/playground-games`). The dashboard validates access and saves everything to your `.env`.
 
-You can also update these values any time from the **Settings** page.
+You can also update these values any time from the **Settings** page, or edit the `.env` file directly. All of this info is managed locally — it's never transmitted anywhere else.
 
 ### Keeping games up to date
 
