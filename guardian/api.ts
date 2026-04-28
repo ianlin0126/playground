@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { existsSync, readFileSync, writeFileSync, unlinkSync, rmSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, unlinkSync, rmSync, statSync } from "fs";
 import { join } from "path";
 import { config, writeEnvAll, getMissingFields, applyEnvToConfig } from "./config";
+import { publishToGitHubPages, readPublishedEntries, writePublishedEntries, checkGitHubAccess, getDeploymentStatus } from "./publisher";
 import { state as telegramState, start as startTelegram, stop as stopTelegram } from "./telegram";
 import { getRecentTurns } from "./db";
 import {
@@ -51,8 +52,8 @@ function handleStatus(): Response {
     gamesBuilt: manifest.length,
     lastGame: lastGame?.name ?? null,
     lanUrl: `http://${config.lanIp}:${config.port}`,
-    sonName: config.sonName,
-    sonTelegramId: config.sonTelegramId,
+    kidName: config.kidName,
+    kidTelegramId: config.kidTelegramId,
     botToken: config.kidBotToken ? `${config.kidBotToken.slice(0, 8)}••••` : null,
     botId: config.kidBotToken ? config.kidBotToken.split(":")[0] : null,
   });
@@ -77,10 +78,19 @@ function handleConversations(): Response {
 }
 
 function handleGames(): Response {
-  const path = join(config.playgroundDir, "games", "manifest.json");
-  if (!existsSync(path)) return json([]);
+  const manifestPath = join(config.playgroundDir, "games", "manifest.json");
+  if (!existsSync(manifestPath)) return json([]);
   try {
-    return json(JSON.parse(readFileSync(path, "utf8")));
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Array<Record<string, string>>;
+    const games = manifest.map(entry => {
+      try {
+        const { mtimeMs } = statSync(join(config.playgroundDir, "games", entry.slug, "index.html"));
+        return { ...entry, builtAt: new Date(mtimeMs).toISOString() };
+      } catch {
+        return entry;
+      }
+    });
+    return json(games);
   } catch {
     return json([]);
   }
@@ -89,14 +99,130 @@ function handleGames(): Response {
 function handleConfigGet(): Response {
   const mask = (val: string) => val ? `${val.slice(0, 8)}••••` : "";
   return json({
-    sonName: config.sonName,
-    sonTelegramId: config.sonTelegramId,
+    kidName: config.kidName,
+    kidTelegramId: config.kidTelegramId,
     anthropicApiKey: mask(config.anthropicApiKey),
     kidBotToken: mask(config.kidBotToken),
+    githubToken: mask(config.githubToken),
+    githubRepo: config.githubRepo,
     playgroundDir: config.playgroundDir,
     port: config.port,
     lanIp: config.lanIp,
   });
+}
+
+function handlePublishGet(): Response {
+  const publishedEntries = readPublishedEntries(config.playgroundDir);
+  const publishedSlugs = publishedEntries.map(e => e.slug);
+  const hasConfig = !!(config.githubToken && config.githubRepo);
+  const [owner, repo] = (config.githubRepo || "/").split("/");
+  const pageUrl = hasConfig ? `https://${owner}.github.io/${repo}/` : null;
+  return json({ publishedEntries, publishedSlugs, hasConfig, pageUrl });
+}
+
+async function handleDeploymentStatus(): Promise<Response> {
+  const entries = readPublishedEntries(config.playgroundDir);
+  const deployingEntry = entries.find(e => e.commitSha);
+
+  if (!deployingEntry || !config.githubToken || !config.githubRepo) {
+    return json({ built: true, publishedEntries: entries });
+  }
+
+  const { built, latestCommit } = await getDeploymentStatus(config.githubToken, config.githubRepo);
+
+  // Confirm only when the built commit matches the one we pushed (or if no commit info available)
+  if (built && (!latestCommit || latestCommit === deployingEntry.commitSha)) {
+    const confirmed = entries.map(e => ({ slug: e.slug, publishedAt: e.publishedAt }));
+    writePublishedEntries(config.playgroundDir, confirmed);
+    return json({ built: true, publishedEntries: confirmed });
+  }
+
+  return json({ built: false, publishedEntries: entries });
+}
+
+async function handlePublishCheck(req: Request): Promise<Response> {
+  let body: { githubToken: string; githubRepo: string };
+  try { body = await req.json(); } catch { return json({ ok: false, error: "Invalid JSON" }, 400); }
+  if (!body.githubToken || !body.githubRepo) {
+    return json({ ok: false, error: "githubToken and githubRepo are required" }, 400);
+  }
+  try {
+    const result = await checkGitHubAccess(body.githubToken, body.githubRepo);
+    return json(result);
+  } catch (e) {
+    return json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+async function handlePublishPost(req: Request): Promise<Response> {
+  if (!config.githubToken) return json({ error: "GITHUB_TOKEN not set" }, 400);
+  if (!config.githubRepo) return json({ error: "GITHUB_REPO not set" }, 400);
+  let body: { slugs: string[] };
+  try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
+  if (!Array.isArray(body.slugs)) return json({ error: "slugs must be an array" }, 400);
+  const result = await publishToGitHubPages(
+    config.playgroundDir,
+    config.githubToken,
+    config.githubRepo,
+    body.slugs,
+  );
+  return json(result, result.ok ? 200 : 500);
+}
+
+async function handlePublishGame(slug: string): Promise<Response> {
+  if (!slug || !/^[\w-]+$/.test(slug)) return json({ error: "Invalid slug" }, 400);
+  if (!config.githubToken) return json({ error: "GITHUB_TOKEN not set" }, 400);
+  if (!config.githubRepo) return json({ error: "GITHUB_REPO not set" }, 400);
+
+  const current = readPublishedEntries(config.playgroundDir);
+  const newSlugs = [...new Set([...current.map(e => e.slug), slug])];
+  const result = await publishToGitHubPages(
+    config.playgroundDir,
+    config.githubToken,
+    config.githubRepo,
+    newSlugs,
+  );
+  if (result.ok) {
+    const now = new Date().toISOString();
+    const prevMap = new Map(current.map(e => [e.slug, e.publishedAt]));
+    writePublishedEntries(
+      config.playgroundDir,
+      newSlugs.map(s => ({
+        slug: s,
+        publishedAt: s === slug ? now : (prevMap.get(s) ?? now),
+        // Only the newly-published game is deploying; already-live games stay live
+        ...(s === slug ? { commitSha: result.commitSha } : {}),
+      })),
+    );
+  }
+  return json(result, result.ok ? 200 : 500);
+}
+
+async function handleUnpublishGame(slug: string): Promise<Response> {
+  if (!slug || !/^[\w-]+$/.test(slug)) return json({ error: "Invalid slug" }, 400);
+  if (!config.githubToken) return json({ error: "GITHUB_TOKEN not set" }, 400);
+  if (!config.githubRepo) return json({ error: "GITHUB_REPO not set" }, 400);
+
+  const current = readPublishedEntries(config.playgroundDir);
+  const newSlugs = current.map(e => e.slug).filter(s => s !== slug);
+  const result = await publishToGitHubPages(
+    config.playgroundDir,
+    config.githubToken,
+    config.githubRepo,
+    newSlugs,
+  );
+  if (result.ok) {
+    const prevMap = new Map(current.map(e => [e.slug, e.publishedAt]));
+    writePublishedEntries(
+      config.playgroundDir,
+      // Remaining games stay confirmed live — only the lobby changed, not their content
+      newSlugs.map(s => ({
+        slug: s,
+        publishedAt: prevMap.get(s) ?? new Date().toISOString(),
+      })),
+    );
+  }
+  return json(result, result.ok ? 200 : 500);
 }
 
 async function handleConfigPatch(req: Request): Promise<Response> {
@@ -231,11 +357,32 @@ async function handleClaudeSessions(): Promise<Response> {
   return json({ sessions });
 }
 
-function handleDeleteGame(slug: string): Response {
+async function handleDeleteGame(slug: string): Promise<Response> {
   if (!slug || !/^[\w-]+$/.test(slug)) return json({ error: "Invalid slug" }, 400);
   const gamesDir = join(config.playgroundDir, "games");
   const gameDir = join(gamesDir, slug);
   if (!gameDir.startsWith(gamesDir + "/")) return json({ error: "Forbidden" }, 403);
+
+  const published = readPublishedEntries(config.playgroundDir);
+  if (published.some(e => e.slug === slug) && config.githubToken && config.githubRepo) {
+    const newSlugs = published.map(e => e.slug).filter(s => s !== slug);
+    const prevMap = new Map(published.map(e => [e.slug, e.publishedAt]));
+    const unpubResult = await publishToGitHubPages(
+      config.playgroundDir,
+      config.githubToken,
+      config.githubRepo,
+      newSlugs,
+    );
+    if (unpubResult.ok) {
+      writePublishedEntries(
+        config.playgroundDir,
+        newSlugs.map(s => ({
+          slug: s,
+          publishedAt: prevMap.get(s) ?? new Date().toISOString(),
+        })),
+      );
+    }
+  }
 
   try { rmSync(gameDir, { recursive: true, force: true }); } catch {
     return json({ error: "Failed to delete game files" }, 500);
@@ -249,6 +396,11 @@ function handleDeleteGame(slug: string): Response {
     } catch { /* non-fatal */ }
   }
 
+  const remaining = readPublishedEntries(config.playgroundDir);
+  if (remaining.some(e => e.slug === slug)) {
+    writePublishedEntries(config.playgroundDir, remaining.filter(e => e.slug !== slug));
+  }
+
   return json({ ok: true });
 }
 
@@ -258,10 +410,10 @@ function handlePromptGet(): Response {
     ? (existsSync(customPromptPath) ? readFileSync(customPromptPath, "utf8") : null)
     : null;
   return json({
-    rendered: getGuardianSystemPrompt(config.sonName),
+    rendered: getGuardianSystemPrompt(config.kidName),
     isCustom: isUsingCustomPrompt(),
     template,
-    defaultRendered: getDefaultGuardianSystemPrompt(config.sonName),
+    defaultRendered: getDefaultGuardianSystemPrompt(config.kidName),
   });
 }
 
@@ -348,9 +500,17 @@ export async function handleApiRequest(req: Request, server: Bun.Server): Promis
   if (path === "/api/conversations" && method === "GET") return handleConversations();
   if (path === "/api/claude-sessions" && method === "GET") return handleClaudeSessions();
   if (path === "/api/games" && method === "GET") return handleGames();
+  const gameSlugPublish   = path.match(/^\/api\/games\/([\w-]+)\/publish$/)?.[1];
+  const gameSlugUnpublish = path.match(/^\/api\/games\/([\w-]+)\/unpublish$/)?.[1];
+  if (gameSlugPublish   && method === "POST") return handlePublishGame(gameSlugPublish);
+  if (gameSlugUnpublish && method === "POST") return handleUnpublishGame(gameSlugUnpublish);
   if (path.startsWith("/api/games/") && method === "DELETE") return handleDeleteGame(path.slice("/api/games/".length));
   if (path === "/api/config" && method === "GET") return handleConfigGet();
   if (path === "/api/config" && method === "PATCH") return handleConfigPatch(req);
+  if (path === "/api/publish" && method === "GET")               return handlePublishGet();
+  if (path === "/api/publish" && method === "POST")              return handlePublishPost(req);
+  if (path === "/api/publish/check" && method === "POST")        return handlePublishCheck(req);
+  if (path === "/api/publish/deployment" && method === "GET")    return handleDeploymentStatus();
   if (path === "/api/setup/status" && method === "GET") return handleSetupStatus();
   if (path === "/api/setup/telegram-id" && method === "GET") return handleSetupTelegramId();
   if (path === "/api/setup/check-claude" && method === "GET") return handleCheckClaude();

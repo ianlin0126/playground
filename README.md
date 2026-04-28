@@ -17,11 +17,9 @@ Kid (Telegram) → Guardian server → Claude Code (on your Mac) → Game URL se
 | macOS 14+ | — |
 | Git | Pre-installed on macOS (`xcode-select --install` if missing) |
 | [Bun](https://bun.sh) | `curl -fsSL https://bun.sh/install | bash` |
-| [Claude Code](https://claude.ai/code) | `npm install -g @anthropic/claude-code` then `claude login` |
+| [Claude Code](https://claude.ai/code) | `curl -fsSL https://claude.ai/install.sh | bash` |
 | [Anthropic API key](https://console.anthropic.com/keys) | Create one at console.anthropic.com |
 | Telegram account | Create an account for your kid |
-
-> Claude Code requires Node.js to install. If `npm` isn't available, install Node.js first from [nodejs.org](https://nodejs.org).
 
 ---
 
@@ -30,9 +28,8 @@ Kid (Telegram) → Guardian server → Claude Code (on your Mac) → Game URL se
 ### Step 1 — Install
 
 ```bash
-bun create github:ianlin0126/playground my-playground
-cd my-playground
-bun install
+bun create ianlin0126/playground
+cd playground
 bun run server
 ```
 
@@ -90,6 +87,54 @@ The Telegram bot resumes automatically when the server starts, as long as `.env`
 
 ---
 
+## Publishing Games to GitHub Pages
+
+Games built locally are only accessible on your home WiFi. GitHub Pages lets you publish them to a free public URL so your kid can play from anywhere — a friend's house, a grandparent's iPad, or their school Chromebook.
+
+### How it works
+
+Once configured, you can publish individual games from the Games section of the parent dashboard with a single click. Each game card shows its current state:
+
+| State | Meaning |
+|---|---|
+| **Publish** (gray toggle) | Built locally, not yet published |
+| **Publishing…** | Uploading to GitHub — takes a few seconds |
+| **Deploying…** | Files uploaded, GitHub Pages is building — takes up to 2 minutes |
+| **Live →** (green, clickable) | Live on GitHub Pages — click to open |
+| **↑ Republish** (amber) | Game was updated locally — click to push the new version live |
+
+### One-time setup
+
+**1. Create a GitHub repository**
+
+Go to [github.com/new](https://github.com/new) and create a new **public** repository (e.g. `playground-games`). No need to initialise it with any files.
+
+**2. Create a Personal Access Token**
+
+GitHub needs a token to let the dashboard push game files on your behalf.
+
+1. On GitHub, click your avatar → **Settings**
+2. Scroll to the bottom → **Developer settings** → **Personal access tokens** → **Fine-grained tokens**
+3. Click **Generate new token**. Give it a name (e.g. "Playground publish") and set an expiry (90 days is a good default)
+4. Under **Repository access**, choose *Only select repositories* and pick your games repo
+5. Under **Repository permissions**, grant **Read and write** for:
+   - **Contents** — to push game files
+   - **Pages** — to enable GitHub Pages
+   - **Administration** — to configure the Pages source branch
+6. Click **Generate token** and copy it immediately — you won't see it again
+
+**3. Configure the dashboard**
+
+Open the **Games** section of the parent dashboard and click **Set up →** in the banner at the top. Enter your token and repository name (`owner/repo`, e.g. `ianlin0126/playground-games`). The dashboard validates access and saves everything to your `.env`.
+
+You can also update these values any time from the **Settings** page.
+
+### Keeping games up to date
+
+When Claude builds a new version of a game that is already live on GitHub Pages, the card turns amber and shows **↑ Republish**. Click either the label or the amber toggle to push the updated version. The game goes through **Publishing…** → **Deploying…** → **Live →** just like the first publish.
+
+---
+
 ## Configuration
 
 All settings live in `.env` (gitignored). Edit them directly or via the Settings page on the dashboard.
@@ -98,8 +143,10 @@ All settings live in `.env` (gitignored). Edit them directly or via the Settings
 |---|---|
 | `ANTHROPIC_API_KEY` | Your Anthropic API key |
 | `KID_BOT_TOKEN` | Telegram bot token from @BotFather |
-| `SON_NAME` | Your kid's first name |
-| `SON_TELEGRAM_ID` | Your kid's numeric Telegram user ID |
+| `KID_NAME` | Your kid's first name |
+| `KID_TELEGRAM_ID` | Your kid's numeric Telegram user ID |
+| `GITHUB_TOKEN` | Personal access token for publishing to GitHub Pages (optional) |
+| `GITHUB_REPO` | Repository to publish to, in `owner/repo` format (optional) |
 
 ---
 

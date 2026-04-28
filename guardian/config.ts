@@ -2,7 +2,7 @@ import { networkInterfaces } from "os";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 
-const REQUIRED_KEYS = ["KID_BOT_TOKEN", "ANTHROPIC_API_KEY", "SON_NAME", "SON_TELEGRAM_ID"] as const;
+const REQUIRED_KEYS = ["KID_BOT_TOKEN", "ANTHROPIC_API_KEY", "KID_NAME", "KID_TELEGRAM_ID"] as const;
 
 // ── Env file I/O ───────────────────────────────────────────────────────────
 
@@ -52,8 +52,10 @@ function detectLanIp(): string {
 export const config = {
   kidBotToken: loadEnv("KID_BOT_TOKEN"),
   anthropicApiKey: loadEnv("ANTHROPIC_API_KEY"),
-  sonName: loadEnv("SON_NAME"),
-  sonTelegramId: Number(loadEnv("SON_TELEGRAM_ID")) || 0,
+  kidName: loadEnv("KID_NAME"),
+  kidTelegramId: Number(loadEnv("KID_TELEGRAM_ID")) || 0,
+  githubToken: loadEnv("GITHUB_TOKEN"),
+  githubRepo: loadEnv("GITHUB_REPO"),
   port: 3000,
   lanIp: detectLanIp(),
   playgroundDir: new URL("..", import.meta.url).pathname.replace(/\/$/, ""),
@@ -62,6 +64,8 @@ export const config = {
 export function applyEnvToConfig(fields: Record<string, string>): void {
   if (fields.KID_BOT_TOKEN !== undefined) config.kidBotToken = fields.KID_BOT_TOKEN;
   if (fields.ANTHROPIC_API_KEY !== undefined) config.anthropicApiKey = fields.ANTHROPIC_API_KEY;
-  if (fields.SON_NAME !== undefined) config.sonName = fields.SON_NAME;
-  if (fields.SON_TELEGRAM_ID !== undefined) config.sonTelegramId = Number(fields.SON_TELEGRAM_ID) || 0;
+  if (fields.KID_NAME !== undefined) config.kidName = fields.KID_NAME;
+  if (fields.KID_TELEGRAM_ID !== undefined) config.kidTelegramId = Number(fields.KID_TELEGRAM_ID) || 0;
+  if (fields.GITHUB_TOKEN !== undefined) config.githubToken = fields.GITHUB_TOKEN;
+  if (fields.GITHUB_REPO !== undefined) config.githubRepo = fields.GITHUB_REPO;
 }

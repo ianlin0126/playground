@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Playground Dashboard</title>
   <link rel="stylesheet" href="/parent/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
 <div id="confirm-modal" class="modal-backdrop" style="display:none" onclick="if(event.target===this)closeModal()">
@@ -14,6 +17,56 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
       <button class="btn btn-danger-solid" id="modal-confirm-btn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<div id="github-setup-modal" class="modal-backdrop" style="display:none" onclick="if(event.target===this)closeGitHubSetup()">
+  <div class="modal-card" style="width:min(calc(100vw - 48px), 660px)">
+    <div class="modal-title">Publish to GitHub Pages</div>
+    <div class="modal-body" style="font-size:13px;color:#475569;line-height:1.65">
+
+      <p style="margin-bottom:14px">Share <strong id="gh-kid-name-text">your kid</strong>'s games with family and friends from anywhere. Games will be published to a free public URL on GitHub Pages.</p>
+
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px">
+        <p style="font-weight:600;font-size:12px;margin-bottom:8px;color:#334155">How to create a Personal Access Token:</p>
+        <ol style="padding-left:16px;margin:0;font-size:12px;line-height:1.8">
+          <li>On GitHub, click your avatar → <strong>Settings</strong></li>
+          <li>Scroll to the bottom → <strong>Developer settings</strong> → <strong>Personal access tokens</strong> → <strong>Fine-grained tokens</strong></li>
+          <li>Click <strong>Generate new token</strong>. Give it a name (e.g. "Playground publish") and set an expiry</li>
+          <li>Under <strong>Repository access</strong>, choose <em>Only select repositories</em> and pick your games repo</li>
+          <li>Under <strong>Repository permissions</strong>, set these three to <strong>Read and write</strong>:
+            <ul style="padding-left:16px;margin-top:4px">
+              <li><strong>Contents</strong> — to push game files</li>
+              <li><strong>Pages</strong> — to enable GitHub Pages</li>
+              <li><strong>Administration</strong> — to configure the Pages source branch</li>
+            </ul>
+          </li>
+          <li>Click <strong>Generate token</strong> and copy it — you won't see it again</li>
+        </ol>
+      </div>
+
+      <div style="background:#fefce8;border:1px solid #fde047;border-radius:8px;padding:9px 12px;margin-bottom:14px;font-size:12px;color:#713f12">
+        🔒 Your token is stored locally in your <code style="background:rgba(0,0,0,0.07);padding:1px 4px;border-radius:3px">.env</code> file on this machine and never sent anywhere except to GitHub. You can also update it directly in <a href="#" onclick="event.preventDefault();closeGitHubSetup();showSection('settings',document.querySelector('[data-section=settings]'))" style="color:#92400e;font-weight:600">Settings →</a>
+      </div>
+
+      <div style="margin-bottom:12px">
+        <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px">Personal Access Token</label>
+        <input id="gh-token-input" type="password" placeholder="ghp_..." autocomplete="off"
+               style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none"
+               onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e2e8f0'">
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px">GitHub Repository <span style="font-weight:400;color:#94a3b8">(owner/repo)</span></label>
+        <input id="gh-repo-input" type="text" placeholder="e.g. ianlin0126/playground" autocomplete="off"
+               style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none"
+               onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e2e8f0'">
+      </div>
+      <div id="gh-setup-error" style="display:none;font-size:12px;color:#dc2626;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:7px 10px;margin-top:10px"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeGitHubSetup()">Cancel</button>
+      <button class="btn btn-primary" id="gh-save-btn" onclick="saveGitHubConfig()">Save Settings</button>
     </div>
   </div>
 </div>
@@ -125,9 +178,18 @@
 
       <!-- GAMES -->
       <div class="section" id="section-games">
-        <div class="games-grid" id="games-grid">
-          <p style="color:#94a3b8;font-size:13px">Loading games...</p>
+
+        <!-- GitHub Pages status bar (always visible) -->
+        <div id="gl-status-bar" class="gl-status-bar" style="display:none"></div>
+
+        <!-- Error bar -->
+        <div id="publish-error" class="gl-error-bar" style="display:none"></div>
+
+        <!-- Grid -->
+        <div class="gl-grid" id="games-grid">
+          <div class="gl-loading">Loading games…</div>
         </div>
+
       </div>
 
       <!-- PROMPT -->
@@ -164,15 +226,15 @@
           <div class="settings-row">
             <span class="settings-label">Kid's name</span>
             <div style="display:flex;align-items:center;gap:8px">
-              <span class="settings-value" id="cfg-sonName">—</span>
-              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="editField('SON_NAME','cfg-sonName')">Edit</button>
+              <span class="settings-value" id="cfg-kidName">—</span>
+              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="editField('KID_NAME','cfg-kidName')">Edit</button>
             </div>
           </div>
           <div class="settings-row">
             <span class="settings-label">Kid's Telegram ID</span>
             <div style="display:flex;align-items:center;gap:8px">
-              <span class="settings-value" id="cfg-sonTelegramId">—</span>
-              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="editField('SON_TELEGRAM_ID','cfg-sonTelegramId')">Edit</button>
+              <span class="settings-value" id="cfg-kidTelegramId">—</span>
+              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="editField('KID_TELEGRAM_ID','cfg-kidTelegramId')">Edit</button>
             </div>
           </div>
         </div>
@@ -189,6 +251,22 @@
             <div style="display:flex;align-items:center;gap:8px">
               <span class="settings-value" id="cfg-kidBotToken">—</span>
               <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="editSecret('KID_BOT_TOKEN','cfg-kidBotToken')">Edit</button>
+            </div>
+          </div>
+        </div>
+        <div class="settings-group">
+          <div class="settings-row">
+            <span class="settings-label">GitHub Token</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="settings-value" id="cfg-githubToken">—</span>
+              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="editSecret('GITHUB_TOKEN','cfg-githubToken')">Edit</button>
+            </div>
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">GitHub Repo</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="settings-value" id="cfg-githubRepo">—</span>
+              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="editField('GITHUB_REPO','cfg-githubRepo')">Edit</button>
             </div>
           </div>
         </div>
@@ -221,6 +299,18 @@ const TITLES   = { status:'Status', chats:'Conversations', games:'Games', prompt
 let _lanUrl = '';
 let _guardianStatus = 'stopped';
 
+// ── Publish state ─────────────────────────────────────────────────────────
+let _kidName          = '';
+let _publishedEntries = [];
+let _publishedSlugs   = new Set();
+let _publishingSlug        = new Set();
+let _unpublishingSlug      = new Set();
+let _deploymentPollTimer   = null;
+let _deploymentPollAttempt = 0;
+let _publishPageUrl   = null;
+let _publishHasConfig = false;
+let _allGames         = [];
+
 function showSection(name, el) {
   SECTIONS.forEach(s => {
     document.getElementById('section-' + s).classList.toggle('visible', s === name);
@@ -249,6 +339,7 @@ async function refreshStatus() {
   if (!data) return;
   _guardianStatus = data.status;
   _lanUrl = data.lanUrl || '';
+  _kidName = data.kidName || '';
 
   const dot = document.getElementById('sidebar-dot');
   dot.className = 'status-dot ' + data.status;
@@ -274,7 +365,7 @@ async function refreshStatus() {
   document.getElementById('stat-uptime').textContent = data.status === 'running' && data.uptime ? formatUptime(data.uptime) : '—';
 
   document.getElementById('guardian-kid').textContent =
-    data.sonName ? `${data.sonName} (ID ${data.sonTelegramId || '—'})` : '—';
+    data.kidName ? `${data.kidName} (ID ${data.kidTelegramId || '—'})` : '—';
   document.getElementById('guardian-bot').textContent =
     data.botId ? `ID ${data.botId}` : 'Not configured';
 
@@ -365,13 +456,33 @@ function escHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ── Games ─────────────────────────────────────────────────────────────────
+// ── Game Library ──────────────────────────────────────────────────────────
+
+const GL_GRADIENTS = [
+  ['#ffd89b','#f4845f'],  // warm peach-amber
+  ['#a8edea','#fbc2eb'],  // aqua-pink pastel
+  ['#c3b4f8','#f8b4d6'],  // lavender-rose
+  ['#81e6d9','#4fd1c5'],  // teal
+  ['#fbd38d','#f6ad55'],  // golden
+  ['#9ae6b4','#68d391'],  // sage green
+  ['#b2ceff','#90cdf4'],  // soft sky
+  ['#fed7aa','#fb923c'],  // tangerine
+];
+
+function glGradient(name) {
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  const [a, b] = GL_GRADIENTS[h % GL_GRADIENTS.length];
+  return `linear-gradient(135deg, ${a} 0%, ${b} 100%)`;
+}
 
 const GAME_EMOJIS = {
   'catch': '⭐', 'star': '⭐', 'space': '🚀', 'shoot': '🚀', 'alien': '👾',
   'fruit': '🍉', 'ninja': '🥷', 'color': '🎨', 'fish': '🐟', 'balloon': '🎈',
   'cookie': '🍪', 'whack': '🐹', 'mole': '🐹', 'maze': '🌀', 'memory': '🧠',
   'slide': '🧩', 'snow': '❄️', 'turtle': '🐢', 'race': '🏁', 'uno': '🃏',
+  'jump': '🐸', 'frog': '🐸', 'shark': '🦈', 'ocean': '🌊', 'base': '🏰',
+  'evolution': '🧬', 'runner': '🏃', 'ball': '⚽', 'feeder': '🐠',
 };
 
 function gameEmoji(name) {
@@ -384,39 +495,347 @@ function gameEmoji(name) {
 
 function closeModal() {
   document.getElementById('confirm-modal').style.display = 'none';
+  // Reset to default delete state
+  document.querySelector('#confirm-modal .modal-title').textContent = 'Delete game?';
+  const btn = document.getElementById('modal-confirm-btn');
+  btn.className = 'btn btn-danger-solid';
+  btn.textContent = 'Delete';
 }
 
-function deleteGame(slug, name) {
-  document.getElementById('modal-body').textContent = `"${name}" will be removed permanently.`;
+
+async function loadGames() {
+  const [games, pubData] = await Promise.all([
+    fetch('/api/games').then(r => r.json()).catch(() => []),
+    fetch('/api/publish').then(r => r.json()).catch(() => ({ publishedEntries:[], publishedSlugs:[], hasConfig:false, pageUrl:null })),
+  ]);
+  _allGames         = games;
+  _publishedEntries = pubData.publishedEntries || [];
+  _publishedSlugs   = new Set(pubData.publishedSlugs || []);
+  _publishHasConfig = pubData.hasConfig || false;
+  _publishPageUrl   = pubData.pageUrl || null;
+
+  renderStatusBar();
+  renderGames(_allGames);
+  if (_publishedEntries.some(e => e.commitSha)) startDeploymentPolling();
+}
+
+function renderStatusBar() {
+  const el = document.getElementById('gl-status-bar');
+  if (!el) return;
+  if (!_publishHasConfig) {
+    if (!_allGames.length) { el.style.display = 'none'; return; }
+    el.className = 'gl-status-bar gl-status-bar-off';
+    el.style.display = 'flex';
+    el.innerHTML = `
+      <span class="gl-status-dot gl-status-dot-off"></span>
+      <span class="gl-status-text">Publish games to GitHub Pages so Clive can play from anywhere</span>
+      <button class="gl-status-setup-btn" onclick="openGitHubSetup()">Set up →</button>`;
+    return;
+  }
+  el.style.display = 'flex';
+  el.className = 'gl-status-bar gl-status-bar-on';
+  const n = _publishedSlugs.size;
+  if (n > 0) {
+    el.innerHTML = `
+      <span class="gl-status-dot gl-status-dot-on"></span>
+      <span class="gl-status-text"><strong>${n} game${n===1?'':'s'} live</strong> at
+        <a class="gl-status-link" href="${_publishPageUrl}" target="_blank">${_publishPageUrl.replace('https://','')} →</a>
+      </span>`;
+  } else {
+    el.innerHTML = `
+      <span class="gl-status-dot gl-status-dot-on"></span>
+      <span class="gl-status-text">Connected — no games published yet</span>`;
+  }
+}
+
+function renderGames(games) {
+  const grid = document.getElementById('games-grid');
+  if (!grid) return;
+  if (!games.length) {
+    grid.innerHTML = `
+      <div class="gl-empty">
+        <div class="gl-empty-icon">🎮</div>
+        <div class="gl-empty-title">No games built yet</div>
+        <div class="gl-empty-sub">Ask Clive to request a game via Telegram</div>
+      </div>`;
+    return;
+  }
+
+  const publishedMap = new Map(_publishedEntries.map(e => [e.slug, e]));
+
+  grid.innerHTML = [...games].reverse().map(g => {
+    const isPublished    = _publishedSlugs.has(g.slug);
+    const isPublishing   = _publishingSlug.has(g.slug);
+    const isUnpublishing = _unpublishingSlug.has(g.slug);
+    const entry          = publishedMap.get(g.slug);
+    const publishedAt    = entry?.publishedAt;
+    const isDeploying    = isPublished && !isPublishing && !isUnpublishing && !!entry?.commitSha;
+    const hasUpdate      = isPublished && !isDeploying && publishedAt && new Date(g.builtAt) > new Date(publishedAt);
+    const gradient       = glGradient(g.name);
+    const emoji          = gameEmoji(g.name);
+    const s              = escHtml(g.slug);
+
+    let cardExtra = '';
+    if (isPublishing)        cardExtra = ' gl-card-publishing';
+    else if (isUnpublishing) cardExtra = ' gl-card-unpublishing';
+    else if (isDeploying)    cardExtra = ' gl-card-deploying';
+    else if (hasUpdate)      cardExtra = ' gl-card-update';
+    else if (isPublished)    cardExtra = ' gl-card-live';
+
+    let toggleClass = 'off';
+    if (isPublishing)        toggleClass = 'publishing';
+    else if (isUnpublishing) toggleClass = 'unpublishing';
+    else if (isDeploying)    toggleClass = 'deploying';
+    else if (hasUpdate)      toggleClass = 'update';
+    else if (isPublished)    toggleClass = 'on';
+
+    let labelHtml;
+    if (isPublishing) {
+      labelHtml = `<span class="gl-toggle-label publishing">Publishing…</span>`;
+    } else if (isUnpublishing) {
+      labelHtml = `<span class="gl-toggle-label unpublishing">Unpublishing…</span>`;
+    } else if (isDeploying) {
+      labelHtml = `<span class="gl-toggle-label deploying">Deploying…</span>`;
+    } else if (hasUpdate) {
+      labelHtml = `<span class="gl-toggle-label update" style="cursor:pointer" onclick="event.stopPropagation();toggleGamePublish('${s}',false)">↑ Republish</span>`;
+    } else if (isPublished && _publishPageUrl) {
+      labelHtml = `<a class="gl-toggle-label live" href="${_publishPageUrl}games/${s}/" target="_blank" onclick="event.stopPropagation()">Live →</a>`;
+    } else {
+      labelHtml = `<span class="gl-toggle-label">Publish</span>`;
+    }
+
+    return `
+      <div class="gl-card${cardExtra}" data-slug="${s}" onclick="glCardClick(event,'${s}')">
+        <div class="gl-card-band" style="background:${gradient}">
+          <button class="gl-card-del" title="Delete"
+                  onclick="event.stopPropagation();deleteGame('${s}')">🗑</button>
+          ${isPublished ? `<span class="gl-live-badge${hasUpdate?' gl-update-badge':''}">${hasUpdate?'UPDATE':'LIVE'}</span>` : ''}
+          <span style="position:relative;z-index:1">${emoji}</span>
+        </div>
+        <div class="gl-card-body">
+          <div class="gl-game-name">${escHtml(g.name)}</div>
+          <div class="gl-game-date">${new Date(g.builtAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
+          <div class="gl-toggle-row">
+            ${labelHtml}
+            <div class="gl-toggle ${toggleClass}"
+                 onclick="event.stopPropagation();toggleGamePublish('${s}',${isPublished && !hasUpdate})">
+              <div class="gl-toggle-knob"></div>
+            </div>
+          </div>
+          <div class="gl-card-error" id="gl-err-${s}" style="display:none"></div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function glCardClick(e, slug) {
+  window.open('/games/' + slug + '/', '_blank');
+}
+
+async function toggleGamePublish(slug, isCurrentlyLive) {
+  if (_publishingSlug.has(slug) || _unpublishingSlug.has(slug)) return;
+  if (!_publishHasConfig) { openGitHubSetup(); return; }
+
+  if (isCurrentlyLive) {
+    _unpublishingSlug.add(slug);
+  } else {
+    _publishingSlug.add(slug);
+  }
+  renderGames(_allGames);
+
+  const endpoint = isCurrentlyLive
+    ? `/api/games/${slug}/unpublish`
+    : `/api/games/${slug}/publish`;
+
+  const res = await fetch(endpoint, { method: 'POST' })
+    .then(r => r.json())
+    .catch(() => ({ ok: false, error: 'Network error' }));
+
+  _publishingSlug.delete(slug);
+  _unpublishingSlug.delete(slug);
+
+  if (res.ok) {
+    const pubData = await fetch('/api/publish').then(r => r.json()).catch(() => null);
+    if (pubData) {
+      _publishedEntries = pubData.publishedEntries || [];
+      _publishedSlugs   = new Set(pubData.publishedSlugs || []);
+      _publishPageUrl   = pubData.pageUrl || _publishPageUrl;
+    }
+    renderStatusBar();
+    if (_publishedEntries.some(e => e.commitSha)) startDeploymentPolling();
+  } else {
+    const errEl = document.getElementById('gl-err-' + slug);
+    if (errEl) {
+      errEl.textContent = res.error || 'Failed to update';
+      errEl.style.display = 'block';
+      setTimeout(() => { errEl.style.display = 'none'; }, 6000);
+    }
+  }
+  renderGames(_allGames);
+}
+
+function startDeploymentPolling() {
+  if (_deploymentPollTimer) return;
+  _deploymentPollAttempt = 0;
+  _deploymentPollTimer = setInterval(checkDeploymentStatus, 12000);
+  checkDeploymentStatus();
+}
+
+function stopDeploymentPolling() {
+  clearInterval(_deploymentPollTimer);
+  _deploymentPollTimer = null;
+}
+
+async function checkDeploymentStatus() {
+  _deploymentPollAttempt++;
+  // Safety timeout: stop after ~6 minutes (30 × 12s)
+  if (_deploymentPollAttempt > 30) {
+    stopDeploymentPolling();
+    // Give up waiting — treat as live so UI doesn't stay stuck
+    _publishedEntries = _publishedEntries.map(({ commitSha, ...rest }) => rest);
+    renderGames(_allGames);
+    return;
+  }
+
+  const data = await fetch('/api/publish/deployment').then(r => r.json()).catch(() => null);
+  if (!data) return;
+
+  if (data.publishedEntries) {
+    _publishedEntries = data.publishedEntries;
+    _publishedSlugs   = new Set(data.publishedEntries.map(e => e.slug));
+  }
+
+  if (data.built || !_publishedEntries.some(e => e.commitSha)) {
+    stopDeploymentPolling();
+  }
+
+  renderGames(_allGames);
+  renderStatusBar();
+}
+
+function deleteGame(slug) {
+  const game = _allGames.find(g => g.slug === slug);
+  const name = game ? game.name : slug;
+  const isLive = _publishedSlugs.has(slug);
+
+  document.querySelector('#confirm-modal .modal-title').textContent = 'Delete game?';
+  document.getElementById('modal-body').innerHTML = isLive
+    ? `This will remove <strong>${escHtml(name)}</strong> and unpublish it from GitHub Pages. This cannot be undone.`
+    : `This will permanently remove <strong>${escHtml(name)}</strong>. This cannot be undone.`;
+
   const btn = document.getElementById('modal-confirm-btn');
+  btn.className = 'btn btn-danger-solid';
+  btn.textContent = 'Delete';
   btn.onclick = async () => {
     closeModal();
     const res = await fetch(`/api/games/${slug}`, { method: 'DELETE' })
-      .then(r => r.json()).catch(() => ({ error: 'Network error' }));
-    if (res.ok) { loadGames(); }
-    else { alert('Error: ' + (res.error || 'Could not delete game')); }
+      .then(r => r.json())
+      .catch(() => ({ error: 'Network error' }));
+    if (res.ok) {
+      _allGames = _allGames.filter(g => g.slug !== slug);
+      _publishedSlugs.delete(slug);
+      _publishedEntries = _publishedEntries.filter(e => e.slug !== slug);
+      renderStatusBar();
+      renderGames(_allGames);
+    } else {
+      showPublishError('Failed to delete: ' + (res.error || 'Unknown error'));
+    }
   };
   document.getElementById('confirm-modal').style.display = 'flex';
 }
 
-async function loadGames() {
-  const games = await fetch('/api/games').then(r => r.json()).catch(() => []);
-  const grid = document.getElementById('games-grid');
-  if (!games.length) { grid.innerHTML = '<p style="color:#94a3b8;font-size:13px">No games built yet.</p>'; return; }
+function showPublishError(msg) {
+  const el = document.getElementById('publish-error');
+  if (el) { el.textContent = msg; el.style.display = 'block'; }
+}
 
-  grid.innerHTML = [...games].reverse().map(g => `
-    <div class="game-card">
-      <div class="game-thumb">${gameEmoji(g.name)}</div>
-      <div class="game-info">
-        <div class="game-name">${escHtml(g.name)}</div>
-        <div class="game-date">${new Date(g.builtAt).toLocaleDateString()}</div>
-        <div class="game-actions">
-          <a class="game-link" href="/games/${escHtml(g.slug)}/" target="_blank">▶ Play</a>
-          <button class="game-delete" onclick="deleteGame('${escHtml(g.slug)}', '${escHtml(g.name).replace(/'/g, "\\'")}')">🗑 Delete</button>
-        </div>
-      </div>
-    </div>
-  `).join('');
+function hidePublishError() {
+  const el = document.getElementById('publish-error');
+  if (el) el.style.display = 'none';
+}
+
+
+function openGitHubSetup() {
+  const nameEl = document.getElementById('gh-kid-name-text');
+  if (nameEl) nameEl.textContent = _kidName || 'your kid';
+  // Pre-fill repo if already configured (derive from pageUrl)
+  const repoInput = document.getElementById('gh-repo-input');
+  if (repoInput && _publishPageUrl) {
+    const m = _publishPageUrl.match(/^https:\/\/([^.]+)\.github\.io\/([^/]+)\//);
+    repoInput.value = m ? `${m[1]}/${m[2]}` : '';
+  } else if (repoInput) {
+    repoInput.value = '';
+  }
+  document.getElementById('gh-token-input').value = '';
+  document.getElementById('gh-setup-error').style.display = 'none';
+  document.getElementById('github-setup-modal').style.display = 'flex';
+}
+
+function closeGitHubSetup() {
+  document.getElementById('github-setup-modal').style.display = 'none';
+}
+
+async function saveGitHubConfig() {
+  const repo  = document.getElementById('gh-repo-input').value.trim();
+  const token = document.getElementById('gh-token-input').value.trim();
+  const errEl = document.getElementById('gh-setup-error');
+  errEl.style.display = 'none';
+
+  if (!token) {
+    errEl.textContent = 'Personal Access Token is required.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!repo) {
+    errEl.textContent = 'GitHub repository is required.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!/^[^/]+\/[^/]+$/.test(repo)) {
+    errEl.textContent = 'Repo must be in owner/repo format (e.g. ianlin0126/playground).';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const btn = document.getElementById('gh-save-btn');
+  btn.disabled = true;
+  btn.textContent = 'Checking access…';
+
+  // Validate token + repo access before saving
+  const check = await fetch('/api/publish/check', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ githubToken: token, githubRepo: repo }),
+  }).then(r => r.json()).catch(() => ({ ok: false, error: 'Network error' }));
+
+  if (!check.ok) {
+    errEl.textContent = check.error || 'Could not verify GitHub access.';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Save Settings';
+    return;
+  }
+
+  btn.textContent = 'Saving…';
+  const res = await fetch('/api/config', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ GITHUB_TOKEN: token, GITHUB_REPO: repo }),
+  }).then(r => r.json()).catch(() => ({ ok: false, error: 'Network error' }));
+
+  btn.disabled = false;
+  btn.textContent = 'Save Settings';
+
+  if (!res.ok) {
+    errEl.textContent = 'Error: ' + (res.error || 'Could not save config');
+    errEl.style.display = 'block';
+    return;
+  }
+
+  _publishHasConfig = true;
+  _publishPageUrl = `https://${repo.split('/')[0]}.github.io/${repo.split('/')[1]}/`;
+  closeGitHubSetup();
+  renderStatusBar();
 }
 
 // ── Claude Code sessions ──────────────────────────────────────────────────
@@ -447,10 +866,12 @@ async function loadClaudeSessions() {
 
 async function loadSettings() {
   const cfg = await fetch('/api/config').then(r => r.json()).catch(() => ({}));
-  document.getElementById('cfg-sonName').textContent = cfg.sonName || '—';
-  document.getElementById('cfg-sonTelegramId').textContent = cfg.sonTelegramId || '—';
+  document.getElementById('cfg-kidName').textContent = cfg.kidName || '—';
+  document.getElementById('cfg-kidTelegramId').textContent = cfg.kidTelegramId || '—';
   document.getElementById('cfg-anthropicApiKey').textContent = cfg.anthropicApiKey || '—';
   document.getElementById('cfg-kidBotToken').textContent = cfg.kidBotToken || '—';
+  document.getElementById('cfg-githubToken').textContent = cfg.githubToken || '—';
+  document.getElementById('cfg-githubRepo').textContent = cfg.githubRepo || '—';
   document.getElementById('cfg-playgroundDir').textContent = cfg.playgroundDir || '—';
   document.getElementById('cfg-port').textContent = cfg.port || '—';
 }
