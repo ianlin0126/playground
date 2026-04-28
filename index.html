@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Game Zone 🎮</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 16px;
+    }
+
+    h1 {
+      font-size: clamp(32px, 8vw, 48px);
+      color: #fff;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    p.subtitle {
+      font-size: clamp(16px, 4vw, 22px);
+      color: rgba(255,255,255,0.85);
+      margin-bottom: 48px;
+      text-align: center;
+    }
+
+    .games {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      justify-content: center;
+      max-width: 800px;
+    }
+
+    a.game-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #fff;
+      border-radius: 20px;
+      width: min(200px, calc(100vw - 32px));
+      padding: 36px 24px;
+      text-decoration: none;
+      color: #333;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+      transition: transform 0.15s, box-shadow 0.15s;
+      min-height: 180px;
+    }
+
+    a.game-card:hover,
+    a.game-card:focus {
+      transform: translateY(-6px);
+      box-shadow: 0 16px 32px rgba(0,0,0,0.3);
+      outline: 4px solid #fff;
+    }
+
+    a.game-card .emoji {
+      font-size: 56px;
+      margin-bottom: 16px;
+    }
+
+    a.game-card .name {
+      font-size: 26px;
+      font-weight: bold;
+      text-align: center;
+    }
+
+    a.game-card .tagline {
+      font-size: 16px;
+      color: #666;
+      text-align: center;
+      margin-top: 8px;
+    }
+
+    footer {
+      margin-top: 48px;
+      color: rgba(255,255,255,0.6);
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Game Zone 🎮</h1>
+  <p class="subtitle">Pick a game and have fun!</p>
+
+  <div class="games" id="games-container"></div>
+
+  <footer>More games coming soon!</footer>
+
+  <script>
+    const EMOJIS = ['🃏', '🎲', '🧩', '🎯', '🕹️', '🎮', '🏆', '⭐'];
+
+    fetch('games/manifest.json')
+      .then(function(res) { return res.json(); })
+      .then(function(games) {
+        var container = document.getElementById('games-container');
+        games.forEach(function(game, i) {
+          var a = document.createElement('a');
+          a.className = 'game-card';
+          a.href = 'games/' + game.slug + '/';
+          a.setAttribute('aria-label', 'Play ' + game.name);
+
+          var emojiSpan = document.createElement('span');
+          emojiSpan.className = 'emoji';
+          emojiSpan.textContent = EMOJIS[i % EMOJIS.length];
+
+          var nameSpan = document.createElement('span');
+          nameSpan.className = 'name';
+          nameSpan.textContent = game.name;
+
+          a.appendChild(emojiSpan);
+          a.appendChild(nameSpan);
+          container.appendChild(a);
+        });
+        if (games.length === 0) {
+          container.innerHTML = '<p style="color:#fff;font-size:1.2rem;">No games yet — come back soon! 🎮</p>';
+        }
+      })
+      .catch(function() {
+        document.getElementById('games-container').innerHTML = '<p style="color:#fff;font-size:1.2rem;">Oops! Could not load games. Try refreshing! 🔄</p>';
+      });
+  </script>
+
+</body>
+</html>

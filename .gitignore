@@ -1,0 +1,6 @@
+.worktrees/
+.guardian/
+.env
+node_modules/
+games/
+docs/

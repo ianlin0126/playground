@@ -1,0 +1,12 @@
+{
+  "name": "playground",
+  "version": "1.0.0",
+  "scripts": {
+    "server": "bun run guardian/guardian.ts",
+    "guardian": "bun run guardian/guardian.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "bun-types": "latest"
+  }
+}
