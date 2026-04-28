@@ -21,6 +21,24 @@
   </div>
 </div>
 
+<div id="edit-modal" class="modal-backdrop" style="display:none" onclick="if(event.target===this)closeEditModal()">
+  <div class="modal-card">
+    <div class="modal-title" id="edit-modal-title">Edit value</div>
+    <div class="modal-body">
+      <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:6px" id="edit-modal-label">New value</label>
+      <input id="edit-modal-input" type="text" autocomplete="off"
+             style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;outline:none"
+             onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e2e8f0'"
+             onkeydown="if(event.key==='Enter')submitEditModal()">
+      <div id="edit-modal-error" style="display:none;font-size:12px;color:#dc2626;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:7px 10px;margin-top:8px"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeEditModal()">Cancel</button>
+      <button class="btn btn-primary" id="edit-modal-save" onclick="submitEditModal()">Save</button>
+    </div>
+  </div>
+</div>
+
 <div id="github-setup-modal" class="modal-backdrop" style="display:none" onclick="if(event.target===this)closeGitHubSetup()">
   <div class="modal-card" style="width:min(calc(100vw - 48px), 660px)">
     <div class="modal-title">Publish to GitHub Pages</div>
@@ -227,14 +245,14 @@
             <span class="settings-label">Kid's name</span>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="settings-value" id="cfg-kidName">—</span>
-              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="editField('KID_NAME','cfg-kidName')">Edit</button>
+              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="openEditModal('KID_NAME','cfg-kidName',false)">Edit</button>
             </div>
           </div>
           <div class="settings-row">
             <span class="settings-label">Kid's Telegram ID</span>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="settings-value" id="cfg-kidTelegramId">—</span>
-              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="editField('KID_TELEGRAM_ID','cfg-kidTelegramId')">Edit</button>
+              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="openEditModal('KID_TELEGRAM_ID','cfg-kidTelegramId',false)">Edit</button>
             </div>
           </div>
         </div>
@@ -243,14 +261,14 @@
             <span class="settings-label">Anthropic API key</span>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="settings-value" id="cfg-anthropicApiKey">—</span>
-              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="editSecret('ANTHROPIC_API_KEY','cfg-anthropicApiKey')">Edit</button>
+              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="openEditModal('ANTHROPIC_API_KEY','cfg-anthropicApiKey',true)">Edit</button>
             </div>
           </div>
           <div class="settings-row">
             <span class="settings-label">Telegram bot token</span>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="settings-value" id="cfg-kidBotToken">—</span>
-              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="editSecret('KID_BOT_TOKEN','cfg-kidBotToken')">Edit</button>
+              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="openEditModal('KID_BOT_TOKEN','cfg-kidBotToken',true)">Edit</button>
             </div>
           </div>
         </div>
@@ -259,14 +277,14 @@
             <span class="settings-label">GitHub Token</span>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="settings-value" id="cfg-githubToken">—</span>
-              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="editSecret('GITHUB_TOKEN','cfg-githubToken')">Edit</button>
+              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="openEditModal('GITHUB_TOKEN','cfg-githubToken',true)">Edit</button>
             </div>
           </div>
           <div class="settings-row">
             <span class="settings-label">GitHub Repo</span>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="settings-value" id="cfg-githubRepo">—</span>
-              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="editField('GITHUB_REPO','cfg-githubRepo')">Edit</button>
+              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="openEditModal('GITHUB_REPO','cfg-githubRepo',false)">Edit</button>
             </div>
           </div>
         </div>
@@ -279,9 +297,6 @@
             <span class="settings-label">Game server port</span>
             <span class="settings-value" id="cfg-port">—</span>
           </div>
-        </div>
-        <div style="margin-top:20px">
-          <button class="btn btn-primary" onclick="openClaude()">⚡ Open in Claude Code</button>
         </div>
       </div>
     </div>
@@ -876,36 +891,55 @@ async function loadSettings() {
   document.getElementById('cfg-port').textContent = cfg.port || '—';
 }
 
-async function editField(envKey, displayId) {
+let _editModalEnvKey = '';
+let _editModalDisplayId = '';
+let _editModalIsSecret = false;
+
+function openEditModal(envKey, displayId, isSecret) {
   const display = document.getElementById(displayId);
-  const current = display.textContent;
-  const val = prompt(`New value for ${envKey}:`, current === '—' ? '' : current);
-  if (!val) return;
-  await fetch('/api/config', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ [envKey]: val }),
-  });
-  display.textContent = val;
+  const label = display.closest('.settings-row')?.querySelector('.settings-label')?.textContent || envKey;
+  _editModalEnvKey = envKey;
+  _editModalDisplayId = displayId;
+  _editModalIsSecret = isSecret;
+  document.getElementById('edit-modal-title').textContent = 'Edit ' + label;
+  const input = document.getElementById('edit-modal-input');
+  input.type = isSecret ? 'password' : 'text';
+  input.value = isSecret ? '' : (display.textContent === '—' ? '' : display.textContent);
+  input.placeholder = isSecret ? '••••••••' : '';
+  document.getElementById('edit-modal-error').style.display = 'none';
+  const saveBtn = document.getElementById('edit-modal-save');
+  saveBtn.textContent = 'Save';
+  saveBtn.disabled = false;
+  document.getElementById('edit-modal').style.display = 'flex';
+  setTimeout(() => input.focus(), 50);
 }
 
-async function editSecret(envKey, displayId) {
-  const val = prompt(`New value for ${envKey} (will be validated):`);
+function closeEditModal() {
+  document.getElementById('edit-modal').style.display = 'none';
+}
+
+async function submitEditModal() {
+  const val = document.getElementById('edit-modal-input').value.trim();
   if (!val) return;
+  const saveBtn = document.getElementById('edit-modal-save');
+  saveBtn.textContent = 'Saving…';
+  saveBtn.disabled = true;
+  const errEl = document.getElementById('edit-modal-error');
+  errEl.style.display = 'none';
   const res = await fetch('/api/config', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ [envKey]: val }),
-  }).then(r => r.json());
-  if (res.ok) {
-    document.getElementById(displayId).textContent = `${val.slice(0,8)}••••`;
-  } else {
-    alert('Error: ' + (res.error || 'Validation failed'));
+    body: JSON.stringify({ [_editModalEnvKey]: val }),
+  }).then(r => r.json()).catch(() => ({ ok: false, error: 'Network error' }));
+  if (!res.ok) {
+    errEl.textContent = res.error || 'Save failed';
+    errEl.style.display = 'block';
+    saveBtn.textContent = 'Save';
+    saveBtn.disabled = false;
+    return;
   }
-}
-
-async function openClaude() {
-  await fetch('/api/open-claude', { method: 'POST' });
+  document.getElementById(_editModalDisplayId).textContent = _editModalIsSecret ? `${val.slice(0,8)}••••` : val;
+  closeEditModal();
 }
 
 async function openClaudeSession(pid) {
