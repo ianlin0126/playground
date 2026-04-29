@@ -51,7 +51,7 @@ function tgBase(): string {
 async function tgGet<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
   const url = new URL(`${tgBase()}/${method}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
-  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(45_000) });
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(70_000) });
   const json = (await res.json()) as { ok: boolean; result: T };
   if (!json.ok) throw new Error(`Telegram ${method} failed: ${JSON.stringify(json)}`);
   return json.result;
@@ -89,7 +89,7 @@ async function compressOldTurns(anthropic: Anthropic): Promise<void> {
 
   const transcript = oldTurns
     .map((m) => {
-      const speaker = m.role === "user" ? config.sonName : "Guardian";
+      const speaker = m.role === "user" ? config.kidName : "Guardian";
       const text = typeof m.content === "string" ? m.content : "[media]";
       return `${speaker}: ${text}`;
     })
@@ -102,7 +102,7 @@ async function compressOldTurns(anthropic: Anthropic): Promise<void> {
       messages: [
         {
           role: "user",
-          content: `Summarize this conversation between a child (${config.sonName}, age 7-8) and a game-building assistant in 3-5 sentences. Focus on: games discussed or built, the child's preferences and interests, any recurring themes or requests, and the overall relationship tone. Be warm and specific.\n\n${transcript}`,
+          content: `Summarize this conversation between a child (${config.kidName}, age 7-8) and a game-building assistant in 3-5 sentences. Focus on: games discussed or built, the child's preferences and interests, any recurring themes or requests, and the overall relationship tone. Be warm and specific.\n\n${transcript}`,
         },
       ],
     });
@@ -115,7 +115,7 @@ async function compressOldTurns(anthropic: Anthropic): Promise<void> {
 
     // Inject new summary pair at position 0 (user must come first for alternating-role requirement)
     conversationHistory.unshift(
-      { role: "user" as const, content: `[Context from earlier conversations with ${config.sonName}]\n${summaryText}` },
+      { role: "user" as const, content: `[Context from earlier conversations with ${config.kidName}]\n${summaryText}` },
       { role: "assistant" as const, content: "Got it! I remember all of that. 😊" }
     );
 
@@ -134,7 +134,7 @@ async function handleMessage(
   text: string,
   image?: { base64: string; mimeType: "image/jpeg" }
 ): Promise<void> {
-  if (fromId !== config.sonTelegramId) {
+  if (fromId !== config.kidTelegramId) {
     console.log(`Ignored message from unknown sender ${fromId}.`);
     return;
   }
@@ -199,13 +199,13 @@ async function handleMessage(
       ]
     : text;
 
-  const historyText = image ? `[${config.sonName} sent a photo${text ? `: "${text}"` : ""}]` : text;
+  const historyText = image ? `[${config.kidName} sent a photo${text ? `: "${text}"` : ""}]` : text;
   conversationHistory.push({ role: "user", content: historyText });
 
   if (isFrustrated(text)) {
     conversationHistory.push({
       role: "user",
-      content: `[Guardian note: ${config.sonName} seems frustrated. Please respond with extra warmth, slow down, and offer to try something simpler or take a break.]`,
+      content: `[Guardian note: ${config.kidName} seems frustrated. Please respond with extra warmth, slow down, and offer to try something simpler or take a break.]`,
     });
   }
 
@@ -218,7 +218,7 @@ async function handleMessage(
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 512,
-    system: getGuardianSystemPrompt(config.sonName, getExistingGames()),
+    system: getGuardianSystemPrompt(config.kidName, getExistingGames()),
     messages: messagesForApi,
   });
 
@@ -238,7 +238,7 @@ async function handleMessage(
     const corrected = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 512,
-      system: getGuardianSystemPrompt(config.sonName, getExistingGames()),
+      system: getGuardianSystemPrompt(config.kidName, getExistingGames()),
       messages: [
         ...messagesForApi,
         { role: "assistant" as const, content: reply },
@@ -286,7 +286,7 @@ type TelegramUpdate = {
 
 async function pollLoop(anthropic: Anthropic): Promise<void> {
   let offset = 0;
-  console.log(`\n🤖 Guardian ready! Listening for ${config.sonName}...`);
+  console.log(`\n🤖 Guardian ready! Listening for ${config.kidName}...`);
 
   while (!_stopSignal) {
     try {
@@ -348,7 +348,7 @@ export function start(): void {
   if (summary) {
     // Inject summary pair at position 0 (user first for alternating-role requirement)
     conversationHistory.push(
-      { role: "user", content: `[Context from earlier conversations with ${config.sonName}]\n${summary.content}` },
+      { role: "user", content: `[Context from earlier conversations with ${config.kidName}]\n${summary.content}` },
       { role: "assistant", content: "Got it! I remember all of that. 😊" }
     );
     _summaryInjected = true;
@@ -430,7 +430,10 @@ export async function recoverOrphanedJobs(): Promise<void> {
       ) {
         console.log(`[telegram] Recovering orphaned job ${f}, re-sending URL...`);
         try {
-          await sendMessage(job.chatId as number, `Here it is!! Open this on your tablet: ${job.url} 🎉`);
+          const msg = job.revisionRequest
+            ? `✅ Updated! Same link: ${job.url} 🎉`
+            : `Here it is!! Open this on your tablet: ${job.url} 🎉`;
+          await sendMessage(job.chatId as number, msg);
           job.telegramSentAt = new Date().toISOString();
           writeFileSync(filePath, JSON.stringify(job, null, 2));
           console.log(`[telegram] Orphaned job ${f} recovered`);

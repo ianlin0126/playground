@@ -51,13 +51,13 @@ describe("getMissingFields", () => {
     const missing = getMissingFields(testDir);
     expect(missing).toContain("KID_BOT_TOKEN");
     expect(missing).toContain("ANTHROPIC_API_KEY");
-    expect(missing).toContain("SON_NAME");
-    expect(missing).toContain("SON_TELEGRAM_ID");
+    expect(missing).toContain("KID_NAME");
+    expect(missing).toContain("KID_TELEGRAM_ID");
   });
 
   it("returns empty array when all keys present", () => {
     writeFileSync(join(testDir, ".env"),
-      "KID_BOT_TOKEN=tok\nANTHROPIC_API_KEY=key\nSON_NAME=Clive\nSON_TELEGRAM_ID=123\n");
+      "KID_BOT_TOKEN=tok\nANTHROPIC_API_KEY=key\nKID_NAME=Clive\nKID_TELEGRAM_ID=123\n");
     expect(getMissingFields(testDir)).toEqual([]);
   });
 });

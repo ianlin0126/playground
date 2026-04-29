@@ -279,15 +279,15 @@ async function startPollingTelegramId() {
   document.getElementById('kid-next').disabled = true;
   detectedKidId = null;
 
-  // If SON_TELEGRAM_ID is already configured (re-run case), pre-fill immediately
+  // If KID_TELEGRAM_ID is already configured (re-run case), pre-fill immediately
   // without touching the guardian — stopping it would block restart in step 7.
   const cfg = await apiFetch('/api/config');
-  if (cfg.sonTelegramId) {
-    showKidFound(cfg.sonTelegramId, '(from existing config)');
+  if (cfg.kidTelegramId) {
+    showKidFound(cfg.kidTelegramId, '(from existing config)');
     return;
   }
 
-  // SON_TELEGRAM_ID is unknown — we need to poll Telegram for a new message.
+  // KID_TELEGRAM_ID is unknown — we need to poll Telegram for a new message.
   // Stop the guardian loop so it doesn't consume getUpdates before we see them.
   // On a fresh setup the guardian isn't running yet, so this is a no-op.
   await apiFetch('/api/guardian/stop', { method: 'POST' });
@@ -299,7 +299,7 @@ async function startPollingTelegramId() {
       await apiFetch('/api/config', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ SON_TELEGRAM_ID: String(res.id) }),
+        body: JSON.stringify({ KID_TELEGRAM_ID: String(res.id) }),
       });
     } else if (res.error) {
       document.getElementById('polling-indicator').style.display = 'none';
@@ -329,7 +329,7 @@ async function saveName() {
   const res = await apiFetch('/api/config', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ SON_NAME: name }),
+    body: JSON.stringify({ KID_NAME: name }),
   });
   if (!res.ok) { err.textContent = res.error || 'Failed to save. Try again.'; return; }
   goTo(7);

@@ -43,9 +43,9 @@ The Guardian Agent is a Bun/TypeScript process that lets your child interact wit
 **Configuration (`.env`, gitignored):**
 ```
 KID_BOT_TOKEN=       # from BotFather
+KID_NAME=            # kid's first name
+KID_TELEGRAM_ID=     # kid's numeric Telegram user ID
 ANTHROPIC_API_KEY=   # Anthropic API key
-SON_NAME=            # kid's first name
-SON_TELEGRAM_ID=     # kid's numeric Telegram user ID
 ```
 
 **Game lobby:** `games/manifest.json` lists all built games; `index.html` fetches it dynamically. Add new entries by having the guardian build a game, or manually append to the JSON.

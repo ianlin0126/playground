@@ -69,8 +69,8 @@ async function main(): Promise<void> {
   if (missing.length > 0) {
     console.log(`\n⚠️  Setup required. Open http://localhost:${config.port}/parent to get started.\n`);
   } else {
-    console.log(`✅ Guardian started for ${config.sonName}`);
-    console.log(`📱 Accepting messages from Telegram ID: ${config.sonTelegramId}`);
+    console.log(`✅ Guardian started for ${config.kidName}`);
+    console.log(`📱 Accepting messages from Telegram ID: ${config.kidTelegramId}`);
     resetZombieJobs().catch((err) => console.error("[guardian] resetZombieJobs failed:", err));
     recoverOrphanedJobs().catch((err) => console.error("[guardian] recoverOrphanedJobs failed:", err));
     startTelegram();
