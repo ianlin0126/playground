@@ -11,12 +11,16 @@ export class BuildNotPickedUpError extends Error {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function toSlug(name: string): string {
-  return name
+export function toSlug(name: string): string {
+  // \p{L}\p{N} keeps accented and non-Latin letters/digits — "Pokémon" stays "pokémon"
+  const slug = name
     .toLowerCase()
-    .replace(/[^\w\s-]/g, "")
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
     .trim()
     .replace(/\s+/g, "-");
+  // Emoji-only or punctuation-only names produce an empty slug; fall back to a
+  // unique non-empty value so we never write to games//index.html.
+  return slug || `game-${Date.now().toString(36)}`;
 }
 
 type ManifestEntry = { id: string; name: string; slug: string; builtAt: string };
@@ -136,7 +140,7 @@ const JOBS_DIR = join(config.playgroundDir, ".guardian", "jobs");
 const POLL_MS = 4_000;
 const PICKUP_TIMEOUT_MS = 10 * 60 * 1000;  // Claude Code may be mid-build on another game; give it 10 min
 const TOTAL_TIMEOUT_MS = 30 * 60 * 1000;
-const ZOMBIE_THRESHOLD_MS = 10 * 60 * 1000; // in_progress > 10 min with no completion → dead session
+export const ZOMBIE_THRESHOLD_MS = 10 * 60 * 1000; // in_progress > this with no completion → dead session
 
 async function pollJobToCompletion(
   jobPath: string,

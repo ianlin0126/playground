@@ -4,7 +4,7 @@ import { join } from "path";
 import { config } from "./config";
 import { insertTurn, getRecentTurns, upsertSummary, getLatestSummary } from "./db";
 import { getGuardianSystemPrompt } from "./prompts";
-import { buildGame, BuildNotPickedUpError, getExistingGames } from "./builder";
+import { buildGame, BuildNotPickedUpError, getExistingGames, ZOMBIE_THRESHOLD_MS } from "./builder";
 
 // ── State ─────────────────────────────────────────────────────────────────
 
@@ -33,9 +33,18 @@ function isFrustrated(text: string): boolean {
   return FRUSTRATION_SIGNALS.some((s) => lower.includes(s));
 }
 
-function isConfirmation(text: string): boolean {
+// Exported for direct testing — the previous substring match treated
+// "don't make it scary" as a confirmation. We now require the message to
+// LEAD with one of the phrases, followed by end-of-string or a non-alphanumeric
+// boundary (so "yes!" matches but "yesterday" does not).
+export function isConfirmation(text: string): boolean {
   const lower = text.toLowerCase().trim();
-  return BUILD_CONFIRMATIONS.some((c) => lower.includes(c));
+  return BUILD_CONFIRMATIONS.some((c) => {
+    if (lower === c) return true;
+    if (!lower.startsWith(c)) return false;
+    const next = lower[c.length];
+    return !/[a-z0-9]/i.test(next);
+  });
 }
 
 function flagsMessage(text: string): boolean {
@@ -81,49 +90,60 @@ let _summaryInjected = false;
 const SUMMARY_TRIGGER = 60;   // compress when history exceeds this
 const SUMMARY_COMPRESS = 30;  // number of old turns to summarize
 
+let _compressing = false;
+
 async function compressOldTurns(anthropic: Anthropic): Promise<void> {
-  // Strip the existing summary pair at position 0 if present
-  const startIdx = _summaryInjected ? 2 : 0;
-  const oldTurns = conversationHistory.slice(startIdx, startIdx + SUMMARY_COMPRESS);
-  if (oldTurns.length < 10) return; // not enough to bother
-
-  const transcript = oldTurns
-    .map((m) => {
-      const speaker = m.role === "user" ? config.kidName : "Guardian";
-      const text = typeof m.content === "string" ? m.content : "[media]";
-      return `${speaker}: ${text}`;
-    })
-    .join("\n");
-
+  // Guard: prevent overlapping runs from spliting the same conversationHistory.
+  // compressOldTurns is fire-and-forget from handleMessage, so two messages
+  // arriving close together would otherwise both read+mutate the array.
+  if (_compressing) return;
+  _compressing = true;
   try {
-    const res = await anthropic.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 300,
-      messages: [
-        {
-          role: "user",
-          content: `Summarize this conversation between a child (${config.kidName}, age 7-8) and a game-building assistant in 3-5 sentences. Focus on: games discussed or built, the child's preferences and interests, any recurring themes or requests, and the overall relationship tone. Be warm and specific.\n\n${transcript}`,
-        },
-      ],
-    });
+    // Strip the existing summary pair at position 0 if present
+    const startIdx = _summaryInjected ? 2 : 0;
+    const oldTurns = conversationHistory.slice(startIdx, startIdx + SUMMARY_COMPRESS);
+    if (oldTurns.length < 10) return; // not enough to bother
 
-    if (!res.content.length || res.content[0].type !== "text") return;
-    const summaryText = res.content[0].text.trim();
+    const transcript = oldTurns
+      .map((m) => {
+        const speaker = m.role === "user" ? config.kidName : "Guardian";
+        const text = typeof m.content === "string" ? m.content : "[media]";
+        return `${speaker}: ${text}`;
+      })
+      .join("\n");
 
-    // Remove old summary pair + compressed turns in-place
-    conversationHistory.splice(0, startIdx + SUMMARY_COMPRESS);
+    try {
+      const res = await anthropic.messages.create({
+        model: "claude-haiku-4-5",
+        max_tokens: 300,
+        messages: [
+          {
+            role: "user",
+            content: `Summarize this conversation between a child (${config.kidName}, age 7-8) and a game-building assistant in 3-5 sentences. Focus on: games discussed or built, the child's preferences and interests, any recurring themes or requests, and the overall relationship tone. Be warm and specific.\n\n${transcript}`,
+          },
+        ],
+      });
 
-    // Inject new summary pair at position 0 (user must come first for alternating-role requirement)
-    conversationHistory.unshift(
-      { role: "user" as const, content: `[Context from earlier conversations with ${config.kidName}]\n${summaryText}` },
-      { role: "assistant" as const, content: "Got it! I remember all of that. 😊" }
-    );
+      if (!res.content.length || res.content[0].type !== "text") return;
+      const summaryText = res.content[0].text.trim();
 
-    _summaryInjected = true;
-    upsertSummary(summaryText);
-    console.log(`[telegram] Conversation compressed — summary saved (${summaryText.length} chars)`);
-  } catch (err) {
-    console.error("[telegram] Summarization failed (non-fatal):", err);
+      // Remove old summary pair + compressed turns in-place
+      conversationHistory.splice(0, startIdx + SUMMARY_COMPRESS);
+
+      // Inject new summary pair at position 0 (user must come first for alternating-role requirement)
+      conversationHistory.unshift(
+        { role: "user" as const, content: `[Context from earlier conversations with ${config.kidName}]\n${summaryText}` },
+        { role: "assistant" as const, content: "Got it! I remember all of that. 😊" }
+      );
+
+      _summaryInjected = true;
+      upsertSummary(summaryText);
+      console.log(`[telegram] Conversation compressed — summary saved (${summaryText.length} chars)`);
+    } catch (err) {
+      console.error("[telegram] Summarization failed (non-fatal):", err);
+    }
+  } finally {
+    _compressing = false;
   }
 }
 
@@ -381,8 +401,6 @@ export function stop(): void {
   state.status = "stopped";
   state.startedAt = null;
 }
-
-const ZOMBIE_THRESHOLD_MS = 10 * 60 * 1000;
 
 export async function resetZombieJobs(): Promise<void> {
   const jobsDir = join(config.playgroundDir, ".guardian", "jobs");
