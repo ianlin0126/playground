@@ -1,6 +1,6 @@
 # Playground — AI Game Studio for Kids
 
-A home game studio run by parents and kids together. Your kid chats with a Telegram bot to describe a game to build; Claude builds them as self-contained web pages served on your home WiFi so the kid can play on a tablet or a smartphone. You monitor conversations and manage games from a local dashboard.
+A game studio run by parents and kids together. Your kid chats with a Telegram bot to describe a game to build; Claude builds them as self-contained web pages served on your home WiFi so the kid can play on a tablet or a smartphone. You monitor conversations and manage games from a local dashboard.
 
 **How it works:**
 
