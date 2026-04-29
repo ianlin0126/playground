@@ -71,7 +71,7 @@ type ConversationTurn = { role: string; content: string };
 function formatConversationContext(turns: ConversationTurn[]): string {
   if (!turns.length) return "";
   const lines = turns.map((t) => {
-    const speaker = t.role === "user" ? `${config.sonName} (kid)` : "Guardian";
+    const speaker = t.role === "user" ? `${config.kidName} (kid)` : "Guardian";
     return `${speaker}: ${typeof t.content === "string" ? t.content : "[image/media]"}`;
   });
   return `\nRecent conversation (for context):\n${lines.join("\n")}\n`;
@@ -279,5 +279,7 @@ export async function buildGame(
   const isRevision = existsSync(join(gamesDir, slug, "index.html"));
   const existingHtml = isRevision ? readFileSync(join(gamesDir, slug, "index.html"), "utf8") : undefined;
 
-  return buildGameViaJobQueue(gameName, slug, isRevision, existingHtml, revisionRequest, conversationContext, chatId, onProgress);
+  const result = await buildGameViaJobQueue(gameName, slug, isRevision, existingHtml, revisionRequest, conversationContext, chatId, onProgress);
+  updateManifest(gamesDir, gameName, result.slug, gameId);
+  return result;
 }

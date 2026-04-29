@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
+import { join, relative } from "path";
 
 export interface PublishedEntry {
   slug: string;
@@ -180,6 +180,21 @@ async function githubApi(
   return res.json();
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+function walkDir(dir: string): string[] {
+  const results: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) {
+      results.push(...walkDir(full));
+    } else {
+      results.push(full);
+    }
+  }
+  return results;
+}
+
 // ── Main publish function ─────────────────────────────────────────────────
 
 export async function publishToGitHubPages(
@@ -225,6 +240,21 @@ export async function publishToGitHubPages(
         encoding: "base64",
       }) as { sha: string };
       treeEntries.push({ path: `games/${slug}/index.html`, mode: "100644", type: "blob", sha: blob.sha });
+    }
+
+    // Upload assets directory (needed by games that reference relative asset paths)
+    const assetsDir = join(playgroundDir, "assets");
+    if (existsSync(assetsDir)) {
+      const assetFiles = walkDir(assetsDir);
+      for (const filePath of assetFiles) {
+        const content = readFileSync(filePath);
+        const blob = await githubApi(githubToken, "POST", `/repos/${owner}/${repo}/git/blobs`, {
+          content: content.toString("base64"),
+          encoding: "base64",
+        }) as { sha: string };
+        const treePath = "assets/" + relative(assetsDir, filePath).replace(/\\/g, "/");
+        treeEntries.push({ path: treePath, mode: "100644", type: "blob", sha: blob.sha });
+      }
     }
 
     // Build and upload the static lobby
