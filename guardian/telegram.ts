@@ -26,25 +26,115 @@ let _stopSignal = false;
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 const FRUSTRATION_SIGNALS = ["i hate", "this is dumb", "ughhh", "forget it", "this doesnt work", "stupid"];
-const BUILD_CONFIRMATIONS = ["yes", "yeah", "yep", "yup", "ok", "okay", "sure", "do it", "build it", "make it", "lets go", "let's go"];
 
 function isFrustrated(text: string): boolean {
   const lower = text.toLowerCase();
   return FRUSTRATION_SIGNALS.some((s) => lower.includes(s));
 }
 
-// Exported for direct testing — the previous substring match treated
-// "don't make it scary" as a confirmation. We now require the message to
-// LEAD with one of the phrases, followed by end-of-string or a non-alphanumeric
-// boundary (so "yes!" matches but "yesterday" does not).
+// ── Confirmation detection ─────────────────────────────────────────────────
+// Designed for an excited 7-year-old's typing. Three layers of tolerance:
+//   1. Normalize: lowercase, strip punctuation/apostrophes, collapse runs of
+//      repeated letters so "Yessssss" → "yes" and "okkk" → "ok".
+//   2. Match against a wide variant set covering yes/ok/sure/go families.
+//   3. Damerau-Levenshtein fuzzy match (distance ≤ 1) for longer phrases so
+//      common typos ("bild it", "bulid it" with l-i transposed) still work.
+
+const CONFIRM_TOKENS = new Set([
+  // yes family — variants and slang
+  "yes", "yeah", "yea", "yep", "yup", "ya", "yas",
+  // ok family — including single-letter abbreviations
+  "ok", "okay", "okey", "okie", "k", "kay",
+  // other simple affirmatives
+  "sure", "fine", "go", "alright", "alrighty",
+  // condensed (no-space) forms of multi-word phrases
+  "doit", "buildit", "makeit", "letsgo",
+]);
+
+const CONFIRM_PHRASES = [
+  "do it",
+  "build it",
+  "make it",
+  "lets go",
+  "go for it",
+];
+
+// Phrases long enough that an edit-distance-1 match is safe (won't collide
+// with random English). Short tokens like "yes" or "ok" are NOT fuzzy-matched
+// because too many real words ("yet", "yew", "or") sit at distance 1.
+const FUZZY_PHRASES = ["build it", "make it", "lets go", "go for it"];
+
+const CONFIRM_EMOJI_RE = /[👍✅👌🆗🤙✔]/u;
+
+function damerauLevenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  const d: number[][] = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) d[i][0] = i;
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(
+        d[i - 1][j] + 1,         // deletion
+        d[i][j - 1] + 1,         // insertion
+        d[i - 1][j - 1] + cost,  // substitution
+      );
+      // Transposition (treat swapped adjacent chars as a single edit)
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      }
+    }
+  }
+  return d[m][n];
+}
+
+function normalizeForMatch(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/['‘’`]/g, "")  // strip apostrophes (' ` ' ' )
+    .replace(/[!.,?¿¡]+/g, "")                    // strip terminal punctuation
+    .replace(/\s+/g, " ")                          // collapse whitespace
+    .replace(/(.)\1+/g, "$1");                     // collapse repeated chars
+}
+
 export function isConfirmation(text: string): boolean {
-  const lower = text.toLowerCase().trim();
-  return BUILD_CONFIRMATIONS.some((c) => {
-    if (lower === c) return true;
-    if (!lower.startsWith(c)) return false;
-    const next = lower[c.length];
-    return !/[a-z0-9]/i.test(next);
-  });
+  if (CONFIRM_EMOJI_RE.test(text)) return true;
+
+  const normalized = normalizeForMatch(text);
+  if (!normalized) return false;
+
+  // Whole-message exact match
+  if (CONFIRM_TOKENS.has(normalized)) return true;
+
+  // First token of the message is a known confirmation (covers "yes please",
+  // "yeah do it", "ok let me see", etc.)
+  const firstSpace = normalized.indexOf(" ");
+  if (firstSpace > 0 && CONFIRM_TOKENS.has(normalized.slice(0, firstSpace))) return true;
+
+  // Multi-word phrase at the start
+  for (const phrase of CONFIRM_PHRASES) {
+    if (normalized === phrase) return true;
+    if (normalized.startsWith(phrase + " ")) return true;
+  }
+
+  // Fuzzy match for typos in longer phrases ("bild it", "bulid it", "mak it")
+  for (const phrase of FUZZY_PHRASES) {
+    const minLen = Math.max(1, phrase.length - 1);
+    const maxLen = Math.min(normalized.length, phrase.length + 1);
+    for (let len = minLen; len <= maxLen; len++) {
+      const prefix = normalized.slice(0, len);
+      if (damerauLevenshtein(prefix, phrase) <= 1) {
+        const after = normalized[len];
+        if (after === undefined || after === " ") return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 function flagsMessage(text: string): boolean {

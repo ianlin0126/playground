@@ -42,44 +42,185 @@ describe("isFrustrated", () => {
   });
 });
 
-describe("isConfirmation", () => {
-  it("matches common yes-phrases", () => {
+describe("isConfirmation — canonical forms", () => {
+  it("matches the bare yes/ok/sure/go family", () => {
     expect(isConfirmation("yes")).toBe(true);
     expect(isConfirmation("yeah")).toBe(true);
+    expect(isConfirmation("yea")).toBe(true);
+    expect(isConfirmation("yep")).toBe(true);
+    expect(isConfirmation("yup")).toBe(true);
+    expect(isConfirmation("ya")).toBe(true);
+    expect(isConfirmation("yas")).toBe(true);
     expect(isConfirmation("ok")).toBe(true);
-    expect(isConfirmation("sure!")).toBe(true);
+    expect(isConfirmation("okay")).toBe(true);
+    expect(isConfirmation("okey")).toBe(true);
+    expect(isConfirmation("okie")).toBe(true);
+    expect(isConfirmation("k")).toBe(true);
+    expect(isConfirmation("kay")).toBe(true);
+    expect(isConfirmation("sure")).toBe(true);
+    expect(isConfirmation("fine")).toBe(true);
+    expect(isConfirmation("go")).toBe(true);
+    expect(isConfirmation("alright")).toBe(true);
+    expect(isConfirmation("alrighty")).toBe(true);
+  });
+
+  it("matches multi-word phrases", () => {
+    expect(isConfirmation("do it")).toBe(true);
+    expect(isConfirmation("build it")).toBe(true);
+    expect(isConfirmation("make it")).toBe(true);
+    expect(isConfirmation("lets go")).toBe(true);
     expect(isConfirmation("let's go")).toBe(true);
+    expect(isConfirmation("go for it")).toBe(true);
+  });
+
+  it("matches condensed (no-space) versions", () => {
+    expect(isConfirmation("doit")).toBe(true);
+    expect(isConfirmation("buildit")).toBe(true);
+    expect(isConfirmation("makeit")).toBe(true);
+    expect(isConfirmation("letsgo")).toBe(true);
+  });
+
+  it("ignores casing and surrounding whitespace", () => {
+    expect(isConfirmation("YES")).toBe(true);
+    expect(isConfirmation("Yes")).toBe(true);
+    expect(isConfirmation("   yes   ")).toBe(true);
+    expect(isConfirmation("Build It")).toBe(true);
+  });
+
+  it("ignores trailing punctuation", () => {
+    expect(isConfirmation("yes!")).toBe(true);
+    expect(isConfirmation("yes!!!")).toBe(true);
+    expect(isConfirmation("ok.")).toBe(true);
+    expect(isConfirmation("Sure!")).toBe(true);
     expect(isConfirmation("Build it!")).toBe(true);
   });
+});
 
-  it("matches phrase followed by additional words", () => {
-    expect(isConfirmation("yes please")).toBe(true);
-    expect(isConfirmation("yeah do it")).toBe(true);
-    expect(isConfirmation("ok let's go")).toBe(true);
-    expect(isConfirmation("Build it now")).toBe(true);
+describe("isConfirmation — stretched repeats (regression: 'Yessssss')", () => {
+  it("matches stretched yes variants — the kid's actual signature", () => {
+    expect(isConfirmation("Yessssss")).toBe(true);     // the bug from the chat log
+    expect(isConfirmation("yesssss")).toBe(true);
+    expect(isConfirmation("yess")).toBe(true);
+    expect(isConfirmation("YESSSS")).toBe(true);
+    expect(isConfirmation("yeahhhh")).toBe(true);
+    expect(isConfirmation("yeaaaa")).toBe(true);
+    expect(isConfirmation("yepppp")).toBe(true);
   });
 
-  it("trims surrounding whitespace", () => {
-    expect(isConfirmation("   yes   ")).toBe(true);
+  it("matches stretched ok variants", () => {
+    expect(isConfirmation("okkk")).toBe(true);
+    expect(isConfirmation("okkkkkk")).toBe(true);
+    expect(isConfirmation("okayyy")).toBe(true);
+    expect(isConfirmation("okayyyyy")).toBe(true);
+    expect(isConfirmation("kk")).toBe(true);
+    expect(isConfirmation("kkkk")).toBe(true);
   });
 
+  it("matches stretched sure/go variants", () => {
+    expect(isConfirmation("sureeee")).toBe(true);
+    expect(isConfirmation("suuure")).toBe(true);
+    expect(isConfirmation("gooo")).toBe(true);
+    expect(isConfirmation("goo")).toBe(true);
+  });
+
+  it("matches stretched phrases", () => {
+    expect(isConfirmation("Yessssss please")).toBe(true);
+    expect(isConfirmation("Build it!!!")).toBe(true);
+    expect(isConfirmation("letssss go")).toBe(true);
+  });
+});
+
+describe("isConfirmation — typos (Damerau-Levenshtein fuzzy match)", () => {
+  it("matches missing-letter typos in 'build it'", () => {
+    expect(isConfirmation("bild it")).toBe(true);   // missing 'u'
+    expect(isConfirmation("buld it")).toBe(true);   // missing 'i'
+    expect(isConfirmation("buil it")).toBe(true);   // missing 'd'
+    expect(isConfirmation("build i")).toBe(true);   // missing trailing 't'
+  });
+
+  it("matches transposition typos in 'build it'", () => {
+    expect(isConfirmation("bulid it")).toBe(true);  // l-i transposed
+    expect(isConfirmation("biuld it")).toBe(true);  // i-u transposed
+  });
+
+  it("matches typos in 'make it'", () => {
+    expect(isConfirmation("mak it")).toBe(true);    // missing 'e'
+    expect(isConfirmation("make i")).toBe(true);    // missing 't'
+    expect(isConfirmation("maek it")).toBe(true);   // a-e transposed
+  });
+
+  it("matches typos in 'lets go'", () => {
+    expect(isConfirmation("lest go")).toBe(true);   // s-t transposed
+    expect(isConfirmation("lets gp")).toBe(true);   // o → p
+    expect(isConfirmation("let go")).toBe(true);    // missing 's'
+  });
+
+  it("typo + extra words after still matches", () => {
+    expect(isConfirmation("bild it now")).toBe(true);
+    expect(isConfirmation("mak it pink")).toBe(true);
+  });
+});
+
+describe("isConfirmation — emojis", () => {
+  it("matches common thumbs-up / OK emojis", () => {
+    expect(isConfirmation("👍")).toBe(true);
+    expect(isConfirmation("👌")).toBe(true);
+    expect(isConfirmation("✅")).toBe(true);
+    expect(isConfirmation("🆗")).toBe(true);
+  });
+
+  it("matches messages mixing emoji with anything", () => {
+    expect(isConfirmation("👍 do it!")).toBe(true);
+    expect(isConfirmation("hmm 👍")).toBe(true);
+  });
+});
+
+describe("isConfirmation — refusals and ambiguous (must remain false)", () => {
   it("returns false on plain refusals", () => {
     expect(isConfirmation("no")).toBe(false);
+    expect(isConfirmation("nope")).toBe(false);
     expect(isConfirmation("not yet")).toBe(false);
     expect(isConfirmation("maybe later")).toBe(false);
   });
 
   it("does NOT match phrases that only embed a confirmation as substring", () => {
-    // The previous substring match treated these as confirmations.
     expect(isConfirmation("don't make it scary")).toBe(false);
+    expect(isConfirmation("dont make it scary")).toBe(false);
     expect(isConfirmation("can you build it taller?")).toBe(false);
     expect(isConfirmation("I said no, do it differently")).toBe(false);
+    expect(isConfirmation("I don't want to build it like that")).toBe(false);
   });
 
-  it("does not match longer words that begin with a confirmation token", () => {
+  it("does not match longer real words that share a leading prefix with a token", () => {
     expect(isConfirmation("yesterday")).toBe(false);
-    expect(isConfirmation("okayyy")).toBe(false); // strict: kid must use a normal confirmation
-    expect(isConfirmation("surely not")).toBe(false);
+    expect(isConfirmation("yellow")).toBe(false);
+    expect(isConfirmation("surely not")).toBe(false);  // "surely" is its own word
+    expect(isConfirmation("going")).toBe(false);
+    expect(isConfirmation("kayak")).toBe(false);
+  });
+
+  it("does not match unrelated phrases at distance ≥ 2 from any fuzzy phrase", () => {
+    expect(isConfirmation("buy it")).toBe(false);    // d=2 from "build it"
+    expect(isConfirmation("milk it")).toBe(false);   // d≥3 from "make it"
+    expect(isConfirmation("walk it")).toBe(false);   // d=3 from "make it"
+    expect(isConfirmation("get up")).toBe(false);    // unrelated
+  });
+
+  it("returns false for empty / whitespace / pure punctuation", () => {
+    expect(isConfirmation("")).toBe(false);
+    expect(isConfirmation("   ")).toBe(false);
+    expect(isConfirmation("???")).toBe(false);
+  });
+});
+
+describe("isConfirmation — real conversation regression cases", () => {
+  // These are the exact messages from .guardian/conversations.db that broke
+  // after the prior fix landed (turns 894, 896, 900, 904 on 2026-04-30).
+  it("matches every 'Yessssss' from the kid's chat log", () => {
+    expect(isConfirmation("Yessssss")).toBe(true);
+  });
+  it("matches 'Build it' (already worked, pin it)", () => {
+    expect(isConfirmation("Build it")).toBe(true);
   });
 });
 
