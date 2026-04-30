@@ -13,7 +13,7 @@ afterEach(() => rmSync(testDir, { recursive: true, force: true }));
 
 // Import after setting up — config.ts reads playgroundDir from import.meta
 // We'll test the helpers by importing them with a custom dir arg
-import { readEnvFile, writeEnvAll, getMissingFields } from "./config";
+import { readEnvFile, writeEnvAll, getMissingFields, parsePort } from "./config";
 
 describe("readEnvFile", () => {
   it("returns empty object when file does not exist", () => {
@@ -59,5 +59,37 @@ describe("getMissingFields", () => {
     writeFileSync(join(testDir, ".env"),
       "KID_BOT_TOKEN=tok\nANTHROPIC_API_KEY=key\nKID_NAME=Clive\nKID_TELEGRAM_ID=123\n");
     expect(getMissingFields(testDir)).toEqual([]);
+  });
+});
+
+describe("parsePort", () => {
+  it("returns the parsed integer for valid port strings", () => {
+    expect(parsePort("3000")).toBe(3000);
+    expect(parsePort("3001")).toBe(3001);
+    expect(parsePort("8080")).toBe(8080);
+    expect(parsePort("65535")).toBe(65535);
+    expect(parsePort("1")).toBe(1);
+  });
+
+  it("defaults to 3000 when value is empty / undefined", () => {
+    expect(parsePort(undefined)).toBe(3000);
+    expect(parsePort("")).toBe(3000);
+  });
+
+  it("defaults to 3000 for non-numeric input", () => {
+    expect(parsePort("abc")).toBe(3000);
+    expect(parsePort("3000a")).toBe(3000);
+    expect(parsePort("  ")).toBe(3000);
+  });
+
+  it("defaults to 3000 for out-of-range integers", () => {
+    expect(parsePort("0")).toBe(3000);          // port 0 is reserved
+    expect(parsePort("-1")).toBe(3000);
+    expect(parsePort("65536")).toBe(3000);
+    expect(parsePort("999999")).toBe(3000);
+  });
+
+  it("defaults to 3000 for non-integer numbers", () => {
+    expect(parsePort("3000.5")).toBe(3000);
   });
 });

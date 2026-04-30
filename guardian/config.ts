@@ -35,6 +35,11 @@ function loadEnv(key: string): string {
   return process.env[key] ?? "";
 }
 
+export function parsePort(value: string | undefined): number {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 && n <= 65535 ? n : 3000;
+}
+
 function detectLanIp(): string {
   const nets = networkInterfaces();
   const candidates: string[] = [];
@@ -56,7 +61,7 @@ export const config = {
   kidTelegramId: Number(loadEnv("KID_TELEGRAM_ID")) || 0,
   githubToken: loadEnv("GITHUB_TOKEN"),
   githubRepo: loadEnv("GITHUB_REPO"),
-  port: 3000,
+  port: parsePort(loadEnv("PORT")),
   lanIp: detectLanIp(),
   playgroundDir: new URL("..", import.meta.url).pathname.replace(/\/$/, ""),
 };
