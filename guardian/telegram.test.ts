@@ -1,5 +1,8 @@
-import { describe, it, expect } from "bun:test";
-import { isConfirmation } from "./telegram";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
+import { isConfirmation, logRawReply, type RawReplyEntry } from "./telegram";
 
 // telegram.ts keeps isFrustrated and flagsMessage private. Re-implement them
 // here to lock in current behavior — keep in sync with telegram.ts.
@@ -267,5 +270,148 @@ describe("BUILD_HALLUCINATION_RE", () => {
     expect(BUILD_HALLUCINATION_RE.test("on it!Stay tuned")).toBe(true); // "!" then \w — matches
     // Bare "on it" with no punctuation also misses (the [!,. ] is required)
     expect(BUILD_HALLUCINATION_RE.test("on it")).toBe(false);
+  });
+});
+
+describe("logRawReply", () => {
+  let testDir: string;
+  beforeEach(() => {
+    testDir = join(tmpdir(), `reply-log-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(join(testDir, ".guardian"), { recursive: true });
+  });
+  afterEach(() => rmSync(testDir, { recursive: true, force: true }));
+
+  function readEntries(): RawReplyEntry[] {
+    const path = join(testDir, ".guardian", "raw-replies.jsonl");
+    return readFileSync(path, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map(line => JSON.parse(line) as RawReplyEntry);
+  }
+
+  it("appends a JSONL line per call", () => {
+    logRawReply(testDir, {
+      kidMessage: "Yessssss",
+      initialReply: "Ok let me make it!",
+      initialHasToken: false,
+      halluFired: false,
+      correctedReply: null,
+      finalReply: "Ok let me make it!",
+      tokenMatch: null,
+      pendingBuildAfter: null,
+    });
+    logRawReply(testDir, {
+      kidMessage: "Build it",
+      initialReply: "GAME_NAME: Maze\nLet me build that!",
+      initialHasToken: true,
+      halluFired: false,
+      correctedReply: null,
+      finalReply: "GAME_NAME: Maze\nLet me build that!",
+      tokenMatch: { gameName: "Maze" },
+      pendingBuildAfter: { gameName: "Maze" },
+    });
+    const entries = readEntries();
+    expect(entries).toHaveLength(2);
+    expect(entries[0].kidMessage).toBe("Yessssss");
+    expect(entries[1].tokenMatch?.gameName).toBe("Maze");
+  });
+
+  it("records the hallucination-guard outcome in enough detail to distinguish (a)/(b)/(c)", () => {
+    // (a) Hallucination caught, corrected reply ALSO had no token — kid sees stale build language
+    logRawReply(testDir, {
+      kidMessage: "make me a game",
+      initialReply: "I'm building it right now!!",
+      initialHasToken: false,
+      halluFired: true,
+      correctedReply: "I'm updating your game right now!!",
+      finalReply: "I'm updating your game right now!!",
+      tokenMatch: null,
+      pendingBuildAfter: null,
+    });
+    // (b) Hallucination caught, corrected reply included a token — pendingBuild now set
+    logRawReply(testDir, {
+      kidMessage: "make me a game",
+      initialReply: "Working on it!",
+      initialHasToken: false,
+      halluFired: true,
+      correctedReply: "GAME_NAME: Star Game\nShould I make it now? 🎮",
+      finalReply: "GAME_NAME: Star Game\nShould I make it now? 🎮",
+      tokenMatch: { gameName: "Star Game" },
+      pendingBuildAfter: { gameName: "Star Game", revisionRequest: "make me a game" },
+    });
+    // (c) First reply had a token already; guard never fired
+    logRawReply(testDir, {
+      kidMessage: "build a maze",
+      initialReply: "GAME_NAME: Maze\nLooks great!",
+      initialHasToken: true,
+      halluFired: false,
+      correctedReply: null,
+      finalReply: "GAME_NAME: Maze\nLooks great!",
+      tokenMatch: { gameName: "Maze" },
+      pendingBuildAfter: { gameName: "Maze" },
+    });
+    const entries = readEntries();
+    expect(entries).toHaveLength(3);
+    // (a) — hallucination survived
+    expect(entries[0].halluFired).toBe(true);
+    expect(entries[0].tokenMatch).toBeNull();
+    expect(entries[0].pendingBuildAfter).toBeNull();
+    // (b) — hallucination corrected, token now present
+    expect(entries[1].halluFired).toBe(true);
+    expect(entries[1].tokenMatch?.gameName).toBe("Star Game");
+    expect(entries[1].pendingBuildAfter?.gameName).toBe("Star Game");
+    // (c) — token from the start, guard never fired
+    expect(entries[2].halluFired).toBe(false);
+    expect(entries[2].initialHasToken).toBe(true);
+  });
+
+  it("stamps each entry with an ISO timestamp", () => {
+    logRawReply(testDir, {
+      kidMessage: "hi",
+      initialReply: "hi!",
+      initialHasToken: false,
+      halluFired: false,
+      correctedReply: null,
+      finalReply: "hi!",
+      tokenMatch: null,
+      pendingBuildAfter: null,
+    });
+    const [entry] = readEntries();
+    expect(entry.ts).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+    expect(new Date(entry.ts).toString()).not.toBe("Invalid Date");
+  });
+
+  it("survives a missing .guardian dir without throwing", () => {
+    const noDir = join(tmpdir(), `reply-log-nodir-${Date.now()}`);
+    // Don't create the dir — appendFileSync will fail. logRawReply should swallow it.
+    expect(() => logRawReply(noDir, {
+      kidMessage: "x",
+      initialReply: "y",
+      initialHasToken: false,
+      halluFired: false,
+      correctedReply: null,
+      finalReply: "y",
+      tokenMatch: null,
+      pendingBuildAfter: null,
+    })).not.toThrow();
+  });
+
+  it("appends without truncating prior content", () => {
+    const path = join(testDir, ".guardian", "raw-replies.jsonl");
+    writeFileSync(path, '{"ts":"2026-01-01T00:00:00.000Z","existing":"line"}\n');
+    logRawReply(testDir, {
+      kidMessage: "hi",
+      initialReply: "hi!",
+      initialHasToken: false,
+      halluFired: false,
+      correctedReply: null,
+      finalReply: "hi!",
+      tokenMatch: null,
+      pendingBuildAfter: null,
+    });
+    const lines = readFileSync(path, "utf8").trim().split("\n");
+    expect(lines).toHaveLength(2);
+    expect(JSON.parse(lines[0]).existing).toBe("line");
+    expect(JSON.parse(lines[1]).kidMessage).toBe("hi");
   });
 });

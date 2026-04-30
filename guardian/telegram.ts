@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { readdirSync, readFileSync, writeFileSync, existsSync } from "fs";
+import { appendFileSync, readdirSync, readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 import { config } from "./config";
 import { insertTurn, getRecentTurns, upsertSummary, getLatestSummary } from "./db";
@@ -237,6 +237,35 @@ async function compressOldTurns(anthropic: Anthropic): Promise<void> {
   }
 }
 
+// ── Diagnostic logging ────────────────────────────────────────────────────
+// Appends one JSONL line per Claude reply at .guardian/raw-replies.jsonl,
+// capturing the pre-strip text and every decision point. Lets us tell, after
+// the fact, whether a build-in-progress message was a model hallucination
+// caught by the guard, a hallucination that survived re-prompting, or a
+// legitimate token-bearing reply that's waiting on the kid's confirmation.
+
+export type RawReplyEntry = {
+  ts: string;
+  kidMessage: string;
+  initialReply: string;
+  initialHasToken: boolean;
+  halluFired: boolean;
+  correctedReply: string | null;
+  finalReply: string;
+  tokenMatch: { gameName: string; gameId?: string } | null;
+  pendingBuildAfter: { gameName: string; gameId?: string; revisionRequest?: string } | null;
+};
+
+export function logRawReply(playgroundDir: string, entry: Omit<RawReplyEntry, "ts">): void {
+  try {
+    const path = join(playgroundDir, ".guardian", "raw-replies.jsonl");
+    const line = JSON.stringify({ ts: new Date().toISOString(), ...entry }) + "\n";
+    appendFileSync(path, line);
+  } catch (err) {
+    console.error("[telegram] Failed to append raw-reply log:", err);
+  }
+}
+
 async function handleMessage(
   anthropic: Anthropic,
   chatId: number,
@@ -337,13 +366,18 @@ async function handleMessage(
     return;
   }
 
-  let reply = response.content[0].text;
+  const initialReply = response.content[0].text;
+  let reply = initialReply;
 
   // Safety net: if Claude used build-in-progress language without including a GAME_NAME: token,
   // it's a hallucinated build — re-prompt once to get a corrected response.
   const nameMatch = () => reply.match(/^GAME_NAME:\s*(.+)$/m);
   const BUILD_HALLUCINATION_RE = /\b(right now|working on it|on it[!,. ]|give me a sec|i'?m (building|making|updating|creating)|building it|making it|updating it)\b/i;
-  if (!nameMatch() && BUILD_HALLUCINATION_RE.test(reply)) {
+  const initialHasToken = !!nameMatch();
+  let halluFired = false;
+  let correctedReply: string | null = null;
+  if (!initialHasToken && BUILD_HALLUCINATION_RE.test(reply)) {
+    halluFired = true;
     console.warn("[telegram] Build hallucination detected — re-prompting Claude");
     const corrected = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
@@ -356,7 +390,8 @@ async function handleMessage(
       ],
     });
     if (corrected.content.length && corrected.content[0].type === "text") {
-      reply = corrected.content[0].text;
+      correctedReply = corrected.content[0].text;
+      reply = correctedReply;
     }
   }
 
@@ -369,6 +404,19 @@ async function handleMessage(
       revisionRequest: text || undefined,
     };
   }
+
+  logRawReply(config.playgroundDir, {
+    kidMessage: text,
+    initialReply,
+    initialHasToken,
+    halluFired,
+    correctedReply,
+    finalReply: reply,
+    tokenMatch: tokenMatch
+      ? { gameName: tokenMatch[1].trim(), gameId: idMatch ? idMatch[1].trim() : undefined }
+      : null,
+    pendingBuildAfter: pendingGameBuild,
+  });
 
   const cleanReply = reply
     .replace(/^GAME_ID:\s*.+\n?/m, "")
