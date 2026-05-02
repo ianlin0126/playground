@@ -1,0 +1,135 @@
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { mkdirSync, readFileSync, existsSync, rmSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
+import { readdirSync } from "fs";
+
+import { synthesizeSpec, writeSpecFile } from "./synthesizer";
+
+let testDir: string;
+beforeEach(() => {
+  testDir = join(tmpdir(), `synth-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  mkdirSync(testDir, { recursive: true });
+});
+afterEach(() => rmSync(testDir, { recursive: true, force: true }));
+
+const goodSpec = `# Bouncy Frog 🐸
+
+## Concept
+A frog jumps from log to log across a pond. (_kid_)
+
+## Goal
+Jump as many logs as you can without falling in. (_inferred_)
+
+## Controls
+- tap to jump (_kid_)
+
+## Game elements
+- **Player:** a green frog (_kid_)
+- **Obstacles / enemies:** logs that drift apart (_inferred_)
+- **Collectibles / power-ups:** not specified yet (_inferred_)
+- **Levels / progression:** logs drift faster over time (_inferred_)
+
+## Look & feel
+- **Theme / setting:** pond at sunset (_inferred_)
+- **Color palette:** orange and green (_inferred_)
+- **Specific kid asks:** the frog says "ribbit" when it jumps (_kid_)
+
+## Change log
+- **2026-05-02** — initial build: a frog jumps log to log across a pond
+`;
+
+describe("synthesizeSpec — new game success path", () => {
+  it("returns the spec body returned by callApi", async () => {
+    const calls: Array<{ system: string; userMessage: string }> = [];
+    const result = await synthesizeSpec(
+      {
+        gameName: "Bouncy Frog",
+        slug: "bouncy-frog",
+        isRevision: false,
+        conversationTurns: [
+          { role: "user", content: "I want a frog jumping game" },
+          { role: "assistant", content: "Cool! What does the frog jump on?" },
+          { role: "user", content: "logs in a pond" },
+        ],
+        today: "2026-05-02",
+      },
+      {
+        callApi: async (system, userMessage) => {
+          calls.push({ system, userMessage });
+          return goodSpec;
+        },
+      }
+    );
+    expect(result).toBe(goodSpec);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("passes the conversation turns into the user message", async () => {
+    let captured = "";
+    await synthesizeSpec(
+      {
+        gameName: "Bouncy Frog",
+        slug: "bouncy-frog",
+        isRevision: false,
+        conversationTurns: [
+          { role: "user", content: "make a frog game" },
+          { role: "assistant", content: "ok!" },
+        ],
+        today: "2026-05-02",
+      },
+      {
+        callApi: async (_, userMessage) => {
+          captured = userMessage;
+          return goodSpec;
+        },
+      }
+    );
+    expect(captured).toContain("make a frog game");
+    expect(captured).toContain("Bouncy Frog");
+    expect(captured).toContain("2026-05-02");
+  });
+
+  it("passes the system prompt produced by getPmSynthesizerSystemPrompt", async () => {
+    let capturedSystem = "";
+    await synthesizeSpec(
+      {
+        gameName: "X",
+        slug: "x",
+        isRevision: false,
+        conversationTurns: [],
+        today: "2026-05-02",
+      },
+      {
+        callApi: async (system) => {
+          capturedSystem = system;
+          return goodSpec;
+        },
+      }
+    );
+    // System prompt should mention the PM role and the template
+    expect(capturedSystem).toMatch(/product manager/i);
+    expect(capturedSystem).toContain("## Concept");
+  });
+});
+
+describe("writeSpecFile", () => {
+  it("writes the content to games/<slug>/spec.md", async () => {
+    mkdirSync(join(testDir, "bouncy-frog"), { recursive: true });
+    await writeSpecFile(testDir, "bouncy-frog", goodSpec);
+    const written = readFileSync(join(testDir, "bouncy-frog", "spec.md"), "utf8");
+    expect(written).toBe(goodSpec);
+  });
+
+  it("creates the game directory if it doesn't exist yet", async () => {
+    await writeSpecFile(testDir, "fresh-game", goodSpec);
+    expect(existsSync(join(testDir, "fresh-game", "spec.md"))).toBe(true);
+  });
+
+  it("writes atomically via a tmp file + rename (no .tmp left behind)", async () => {
+    await writeSpecFile(testDir, "atomic", goodSpec);
+    const files = readdirSync(join(testDir, "atomic"));
+    expect(files).not.toContain("spec.md.tmp");
+    expect(files).toContain("spec.md");
+  });
+});
