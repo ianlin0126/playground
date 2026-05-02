@@ -203,7 +203,6 @@ describe("buildPrompt with SPEC", () => {
 
   it("embeds the SPEC under a SPEC: heading for new builds", () => {
     const prompt = buildPromptForTest({
-      gameName: "Star Catcher",
       slug: "star-catcher",
       isRevision: false,
       specContent: sampleSpec,
@@ -216,7 +215,6 @@ describe("buildPrompt with SPEC", () => {
 
   it("embeds the SPEC and the existing index.html for revisions", () => {
     const prompt = buildPromptForTest({
-      gameName: "Star Catcher",
       slug: "star-catcher",
       isRevision: true,
       specContent: sampleSpec,
@@ -230,7 +228,6 @@ describe("buildPrompt with SPEC", () => {
 
   it("does not embed raw conversation turns", () => {
     const prompt = buildPromptForTest({
-      gameName: "Star Catcher",
       slug: "star-catcher",
       isRevision: false,
       specContent: sampleSpec,
@@ -241,7 +238,6 @@ describe("buildPrompt with SPEC", () => {
 
   it("includes the verification checklist and GAME_READY marker", () => {
     const prompt = buildPromptForTest({
-      gameName: "Star Catcher",
       slug: "star-catcher",
       isRevision: false,
       specContent: sampleSpec,

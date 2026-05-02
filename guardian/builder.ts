@@ -143,7 +143,6 @@ ${existingHtml}`
 
 // Test-only adapter so tests can build prompts without going through buildGame.
 export function buildPromptForTest(args: {
-  gameName: string;
   slug: string;
   isRevision: boolean;
   specContent: string;
