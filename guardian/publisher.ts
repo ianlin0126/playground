@@ -155,29 +155,50 @@ async function githubApi(
   path: string,
   body?: unknown,
 ): Promise<unknown> {
-  const res = await fetch(`https://api.github.com${path}`, {
-    method,
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Accept": "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-      ...(body ? { "Content-Type": "application/json" } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(30_000),
-  });
-
-  if (!res.ok) {
-    let msg = `GitHub API ${method} ${path} → ${res.status}`;
+  // Retry on transient errors — 5xx and 429 (rate limit). Bursts of
+  // blob uploads (large kenney pack etc.) occasionally hit a 504 from
+  // GitHub's edge; one retry usually clears it.
+  const MAX_ATTEMPTS = 4;
+  let lastErr: Error | null = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      const data = await res.json() as { message?: string };
-      if (data.message) msg += `: ${data.message}`;
-    } catch {}
-    throw new Error(msg);
-  }
+      const res = await fetch(`https://api.github.com${path}`, {
+        method,
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+          ...(body ? { "Content-Type": "application/json" } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(30_000),
+      });
 
-  if (res.status === 204) return null;
-  return res.json();
+      if (res.ok) {
+        if (res.status === 204) return null;
+        return res.json();
+      }
+
+      let msg = `GitHub API ${method} ${path} → ${res.status}`;
+      try {
+        const data = await res.json() as { message?: string };
+        if (data.message) msg += `: ${data.message}`;
+      } catch {}
+      lastErr = new Error(msg);
+
+      const transient = res.status >= 500 || res.status === 429;
+      if (!transient || attempt === MAX_ATTEMPTS) throw lastErr;
+    } catch (e) {
+      // fetch-level errors (network blips, AbortSignal timeout) are also
+      // worth retrying.
+      lastErr = e instanceof Error ? e : new Error(String(e));
+      if (attempt === MAX_ATTEMPTS) throw lastErr;
+    }
+
+    // Exponential backoff: 1s, 2s, 4s
+    await new Promise((r) => setTimeout(r, 1000 * 2 ** (attempt - 1)));
+  }
+  throw lastErr ?? new Error("githubApi: unreachable");
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -236,9 +257,23 @@ export async function publishToGitHubPages(
     // to upload separately.
     const treeEntries: Array<{ path: string; mode: string; type: string; sha: string }> = [];
 
+    // Skip dev artifacts that don't belong on a public game site:
+    // - any *.md (design docs, plans — would also crash Jekyll if it
+    //   were enabled, see the .nojekyll blob below)
+    // - sprite-map.json (atlas-extract build artifact; the game embeds
+    //   the same data as a JS literal in index.html)
+    // - source-sheet.png (original art reference, not used at runtime)
+    function shouldPublish(filePath: string): boolean {
+      const basename = filePath.split("/").pop() ?? "";
+      if (basename.endsWith(".md")) return false;
+      if (basename === "sprite-map.json") return false;
+      if (basename === "source-sheet.png") return false;
+      return true;
+    }
+
     for (const slug of slugs) {
       const gameDir = join(playgroundDir, "games", slug);
-      const gameFiles = walkDir(gameDir);
+      const gameFiles = walkDir(gameDir).filter(shouldPublish);
       for (const filePath of gameFiles) {
         const content = readFileSync(filePath);
         const blob = await githubApi(githubToken, "POST", `/repos/${owner}/${repo}/git/blobs`, {
@@ -254,6 +289,16 @@ export async function publishToGitHubPages(
         });
       }
     }
+
+    // Add an empty .nojekyll marker at the root so GitHub Pages serves
+    // files as static content and skips Jekyll processing. Without this,
+    // any oddly-formatted .md, .swf, etc. could crash Jekyll's parser
+    // and fail the build with an opaque "Page build failed" message.
+    const nojekyllBlob = await githubApi(githubToken, "POST", `/repos/${owner}/${repo}/git/blobs`, {
+      content: "",
+      encoding: "utf-8",
+    }) as { sha: string };
+    treeEntries.push({ path: ".nojekyll", mode: "100644", type: "blob", sha: nojekyllBlob.sha });
 
     // Build and upload the static lobby
     const manifestPath = join(playgroundDir, "games", "manifest.json");
