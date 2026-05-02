@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { appendFileSync, readdirSync, readFileSync, writeFileSync, existsSync } from "fs";
+import { appendFileSync, readdirSync, readFileSync, writeFileSync, existsSync, unlinkSync, renameSync } from "fs";
 import { join } from "path";
 import { config } from "./config";
 import { insertTurn, getRecentTurns, upsertSummary, getLatestSummary } from "./db";
@@ -173,7 +173,51 @@ async function downloadPhoto(fileId: string): Promise<{ base64: string; mimeType
 // ── Conversation loop ─────────────────────────────────────────────────────
 
 const conversationHistory: Anthropic.Messages.MessageParam[] = [];
-let pendingGameBuild: { gameName: string; gameId?: string; revisionRequest?: string } | null = null;
+type PendingGameBuild = { gameName: string; gameId?: string; revisionRequest?: string };
+let pendingGameBuild: PendingGameBuild | null = null;
+
+// Persisted across server restarts so the kid's "yes" survives a guardian
+// restart between the question and the confirmation. Without this, a restart
+// clears the in-RAM state and the kid's "yes" routes to Claude as a fresh
+// message — which can hallucinate a build it never queued. Stale entries
+// older than the TTL are discarded on load.
+const PENDING_BUILD_TTL_MS = 30 * 60 * 1000;
+
+function pendingBuildPath(): string {
+  return join(config.playgroundDir, ".guardian", "pending-build.json");
+}
+
+function setPendingBuild(value: PendingGameBuild | null): void {
+  pendingGameBuild = value;
+  const path = pendingBuildPath();
+  try {
+    if (value === null) {
+      if (existsSync(path)) unlinkSync(path);
+    } else {
+      const tmp = path + ".tmp";
+      writeFileSync(tmp, JSON.stringify({ ...value, setAt: new Date().toISOString() }, null, 2));
+      renameSync(tmp, path);
+    }
+  } catch (e) {
+    console.error("[telegram] failed to persist pendingGameBuild:", e);
+  }
+}
+
+function loadPendingBuild(): PendingGameBuild | null {
+  const path = pendingBuildPath();
+  if (!existsSync(path)) return null;
+  try {
+    const raw = JSON.parse(readFileSync(path, "utf8")) as { gameName?: string; gameId?: string; revisionRequest?: string; setAt?: string };
+    const setAt = raw.setAt ? new Date(raw.setAt).getTime() : NaN;
+    if (!raw.gameName || isNaN(setAt) || Date.now() - setAt > PENDING_BUILD_TTL_MS) {
+      try { unlinkSync(path); } catch { /* non-fatal */ }
+      return null;
+    }
+    return { gameName: raw.gameName, gameId: raw.gameId, revisionRequest: raw.revisionRequest };
+  } catch {
+    return null;
+  }
+}
 let _summaryInjected = false;
 
 // ── Conversation summarization ────────────────────────────────────────────
@@ -251,6 +295,7 @@ export type RawReplyEntry = {
   initialReply: string;
   initialHasToken: boolean;
   halluFired: boolean;
+  urlHalluFired: boolean;
   correctedReply: string | null;
   finalReply: string;
   tokenMatch: { gameName: string; gameId?: string } | null;
@@ -311,7 +356,7 @@ async function handleMessage(
   if (pendingGameBuild !== null) {
     if (isConfirmation(text)) {
       const { gameName, gameId, revisionRequest } = pendingGameBuild;
-      pendingGameBuild = null;
+      setPendingBuild(null);
       conversationHistory.push({ role: "user", content: text });
       const startMsg = "Ok let me make it!! Give me a sec... 🔨⭐";
       await sendMessage(chatId, startMsg);
@@ -395,11 +440,11 @@ async function handleMessage(
         await sendMessage(chatId, reply);
         insertTurn("guardian", reply);
         conversationHistory.push({ role: "assistant", content: reply });
-        pendingGameBuild = { gameName, gameId, revisionRequest };
+        setPendingBuild({ gameName, gameId, revisionRequest });
       }
       return;
     } else {
-      pendingGameBuild = null;
+      setPendingBuild(null);
       conversationHistory.push({ role: "user", content: text });
       const cancelMsg = "No problem! 😊 What would you like to do?";
       await sendMessage(chatId, cancelMsg);
@@ -475,14 +520,39 @@ async function handleMessage(
     }
   }
 
+  // Second safety net: if the reply has BOTH a GAME_NAME: token AND a /games/<slug>/
+  // URL inside the same message, the LLM has hallucinated the build-completion
+  // step. The real flow only emits a URL after buildGame returns, in a separate
+  // sendMessage call — never in the same reply as the token. Re-prompt to get a
+  // clean confirmation question without the fake URL.
+  const HALLUCINATED_GAME_URL_RE = /https?:\/\/[^\s]+\/games\//i;
+  let urlHalluFired = false;
+  if (!!nameMatch() && HALLUCINATED_GAME_URL_RE.test(reply)) {
+    urlHalluFired = true;
+    console.warn("[telegram] Hallucinated game URL in tokenized reply — re-prompting Claude");
+    const corrected = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 512,
+      system: getGuardianSystemPrompt(config.kidName, getExistingGames()),
+      messages: [
+        ...messagesForApi,
+        { role: "assistant" as const, content: reply },
+        { role: "user" as const, content: "[System: Your reply contained a fabricated game URL. Only the server can produce a real URL after the build completes. Please send a corrected response: keep the GAME_NAME: token and ask 'Should I make it now? 🎮' (or 'Should I do it now? 🎮' for updates), but remove any URL, 'Here it is', 'Open this on your tablet', or 'Ok let me make it' content. The kid hasn't confirmed yet — just ask.]" },
+      ],
+    });
+    if (corrected.content.length && corrected.content[0].type === "text") {
+      reply = corrected.content[0].text;
+    }
+  }
+
   const tokenMatch = nameMatch();
   const idMatch = reply.match(/^GAME_ID:\s*(.+)$/m);
   if (tokenMatch) {
-    pendingGameBuild = {
+    setPendingBuild({
       gameName: tokenMatch[1].trim(),
       gameId: idMatch ? idMatch[1].trim() : undefined,
       revisionRequest: text || undefined,
-    };
+    });
   }
 
   logRawReply(config.playgroundDir, {
@@ -490,6 +560,7 @@ async function handleMessage(
     initialReply,
     initialHasToken,
     halluFired,
+    urlHalluFired,
     correctedReply,
     finalReply: reply,
     tokenMatch: tokenMatch
@@ -581,6 +652,13 @@ export function start(): void {
   // Seed conversation history from DB, using summary if available
   conversationHistory.length = 0;
   _summaryInjected = false;
+
+  // Re-hydrate pending build from disk so a confirm survives a restart.
+  // Stale entries (>30 min) are dropped inside loadPendingBuild.
+  pendingGameBuild = loadPendingBuild();
+  if (pendingGameBuild) {
+    console.log(`[telegram] restored pendingGameBuild: ${pendingGameBuild.gameName}`);
+  }
 
   const summary = getLatestSummary();
   if (summary) {

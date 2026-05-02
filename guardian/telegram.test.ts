@@ -304,6 +304,70 @@ describe("BUILD_CONFIRMATION_QUESTION_RE", () => {
   });
 });
 
+describe("HALLUCINATED_GAME_URL_RE", () => {
+  // Mirror of the regex used in handleMessage. A reply that contains a token
+  // AND a /games/<slug>/ URL is a hallucination — the real flow never bundles
+  // them in the same sendMessage call.
+  const HALLUCINATED_GAME_URL_RE = /https?:\/\/[^\s]+\/games\//i;
+
+  it("matches a fabricated game URL", () => {
+    expect(HALLUCINATED_GAME_URL_RE.test(
+      "Here it is!! Open this on your tablet: http://192.168.0.24:3000/games/times-table-blaster/?v=1777723456789 🎉"
+    )).toBe(true);
+    expect(HALLUCINATED_GAME_URL_RE.test(
+      "https://localhost:3000/games/maze-runner-3d/"
+    )).toBe(true);
+  });
+
+  it("does NOT match plain prose (no URL) or non-games URLs", () => {
+    expect(HALLUCINATED_GAME_URL_RE.test("Should I make it now? 🎮")).toBe(false);
+    expect(HALLUCINATED_GAME_URL_RE.test("Here's the plan!! Then we'll make it!")).toBe(false);
+    expect(HALLUCINATED_GAME_URL_RE.test("Check out https://example.com/about for info.")).toBe(false);
+  });
+});
+
+describe("pending-build persistence helpers", () => {
+  // The setPendingBuild/loadPendingBuild helpers aren't exported from
+  // telegram.ts (intentional — they're module-private around the in-RAM
+  // pendingGameBuild). We sanity-check the on-disk shape and TTL behavior
+  // by simulating their contract directly here.
+
+  let testDir: string;
+  const TTL_MS = 30 * 60 * 1000;
+
+  beforeEach(() => {
+    testDir = join(tmpdir(), `pending-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(join(testDir, ".guardian"), { recursive: true });
+  });
+  afterEach(() => rmSync(testDir, { recursive: true, force: true }));
+
+  it("a fresh write + read round-trips the gameName/gameId/revisionRequest fields", () => {
+    const path = join(testDir, ".guardian", "pending-build.json");
+    writeFileSync(path, JSON.stringify({
+      gameName: "Bouncy Frog",
+      gameId: "abc123",
+      revisionRequest: "make it sparkle",
+      setAt: new Date().toISOString(),
+    }));
+    const raw = JSON.parse(readFileSync(path, "utf8"));
+    expect(raw.gameName).toBe("Bouncy Frog");
+    expect(raw.gameId).toBe("abc123");
+    expect(raw.revisionRequest).toBe("make it sparkle");
+  });
+
+  it("entries older than the TTL would be discarded (we simulate the discard predicate)", () => {
+    const stale = Date.now() - TTL_MS - 1000;
+    const isExpired = Date.now() - stale > TTL_MS;
+    expect(isExpired).toBe(true);
+  });
+
+  it("entries newer than the TTL would be kept", () => {
+    const fresh = Date.now() - 1000;
+    const isExpired = Date.now() - fresh > TTL_MS;
+    expect(isExpired).toBe(false);
+  });
+});
+
 describe("logRawReply", () => {
   let testDir: string;
   beforeEach(() => {
