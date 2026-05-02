@@ -4,7 +4,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { readdirSync } from "fs";
 
-import { synthesizeSpec, writeSpecFile } from "./synthesizer";
+import { synthesizeSpec, writeSpecFile, SynthesizerError } from "./synthesizer";
 
 let testDir: string;
 beforeEach(() => {
@@ -160,7 +160,7 @@ A frog jumps from log to log. (_kid_)
       {
         callApi: async (_, userMessage) => {
           captured = userMessage;
-          return priorSpec + "- **2026-05-04** — frog now has a sword\n";
+          return goodSpec;
         },
       }
     );
@@ -183,7 +183,7 @@ A frog jumps from log to log. (_kid_)
       {
         callApi: async (_, userMessage) => {
           captured = userMessage;
-          return priorSpec;
+          return goodSpec;
         },
       }
     );
@@ -216,7 +216,7 @@ describe("synthesizeSpec — lazy backfill (no prior spec, has existing index.ht
       {
         callApi: async (_, userMessage) => {
           captured = userMessage;
-          return `# Maze Runner 🌀\n## Concept\nA player moves through a maze (_inferred-from-code_).\n## Change log\n- **2026-05-02** — spec backfilled from existing game; added a sparkly finish line\n`;
+          return `# Maze Runner 🌀\n\n## Concept\nA player moves through a maze (_inferred-from-code_).\n\n## Goal\nReach the end (_inferred-from-code_).\n\n## Controls\n- arrow keys (_inferred-from-code_)\n\n## Game elements\n- **Player:** a runner (_inferred-from-code_)\n\n## Look & feel\n- **Theme / setting:** maze (_inferred-from-code_)\n\n## Change log\n- **2026-05-02** — spec backfilled from existing game; added a sparkly finish line\n`;
         },
       }
     );
@@ -239,11 +239,111 @@ describe("synthesizeSpec — lazy backfill (no prior spec, has existing index.ht
       {
         callApi: async (_, userMessage) => {
           captured = userMessage;
-          return `# Brand New Game\n## Concept\nx (_inferred_)\n`;
+          return `# Brand New Game\n\n## Concept\nx (_inferred_)\n\n## Goal\ny (_inferred_)\n\n## Controls\n- tap (_inferred_)\n\n## Game elements\n- **Player:** z (_inferred_)\n\n## Look & feel\n- **Theme / setting:** space (_inferred_)\n\n## Change log\n- **2026-05-02** — initial build\n`;
         },
       }
     );
     expect(captured).not.toContain("LAZY BACKFILL");
     expect(captured).not.toContain("PRIOR SPEC");
+  });
+});
+
+describe("synthesizeSpec — validation + retry", () => {
+  const baseArgs = {
+    gameName: "X",
+    slug: "x",
+    isRevision: false,
+    conversationTurns: [],
+    today: "2026-05-02",
+  };
+
+  function specWithAllSections(): string {
+    return `# X 🎮
+
+## Concept
+foo (_inferred_)
+
+## Goal
+bar (_inferred_)
+
+## Controls
+- tap (_inferred_)
+
+## Game elements
+- **Player:** y (_inferred_)
+
+## Look & feel
+- **Theme / setting:** z (_inferred_)
+
+## Change log
+- **2026-05-02** — initial build
+`;
+  }
+
+  it("retries once on a transient API error and succeeds", async () => {
+    let attempts = 0;
+    const result = await synthesizeSpec(baseArgs, {
+      callApi: async () => {
+        attempts++;
+        if (attempts === 1) throw new Error("rate_limit");
+        return specWithAllSections();
+      },
+    });
+    expect(attempts).toBe(2);
+    expect(result).toContain("# X");
+  });
+
+  it("throws SynthesizerError after a second failure", async () => {
+    let attempts = 0;
+    await expect(
+      synthesizeSpec(baseArgs, {
+        callApi: async () => {
+          attempts++;
+          throw new Error("network_down");
+        },
+      })
+    ).rejects.toBeInstanceOf(SynthesizerError);
+    expect(attempts).toBe(2);
+  });
+
+  it("retries once on malformed output (missing # heading)", async () => {
+    let attempts = 0;
+    const result = await synthesizeSpec(baseArgs, {
+      callApi: async () => {
+        attempts++;
+        if (attempts === 1) return "Here is the spec:\n## Concept\n...";
+        return specWithAllSections();
+      },
+    });
+    expect(attempts).toBe(2);
+    expect(result).toContain("# X");
+  });
+
+  it("retries once on malformed output (missing required section)", async () => {
+    let attempts = 0;
+    const result = await synthesizeSpec(baseArgs, {
+      callApi: async () => {
+        attempts++;
+        if (attempts === 1) {
+          // Missing ## Change log
+          return `# X\n## Concept\nfoo (_inferred_)\n## Goal\nbar (_inferred_)\n## Controls\n- tap (_inferred_)\n## Game elements\n- **Player:** y (_inferred_)\n## Look & feel\n- **Theme / setting:** z (_inferred_)\n`;
+        }
+        return specWithAllSections();
+      },
+    });
+    expect(attempts).toBe(2);
+  });
+
+  it("throws SynthesizerError after a second malformed output", async () => {
+    let attempts = 0;
+    await expect(
+      synthesizeSpec(baseArgs, {
+        callApi: async () => {
+          attempts++;
+          return "garbage with no heading";
+        },
+      })
+    ).rejects.toBeInstanceOf(SynthesizerError);
+    expect(attempts).toBe(2);
   });
 });

@@ -18,6 +18,30 @@ export type SynthesizeDeps = {
   callApi: (system: string, userMessage: string) => Promise<string>;
 };
 
+export class SynthesizerError extends Error {
+  constructor(message: string, public readonly cause?: unknown) {
+    super(message);
+    this.name = "SynthesizerError";
+  }
+}
+
+const REQUIRED_SECTIONS = [
+  "## Concept",
+  "## Goal",
+  "## Controls",
+  "## Game elements",
+  "## Look & feel",
+  "## Change log",
+];
+
+export function validateSpec(content: string): { ok: true } | { ok: false; reason: string } {
+  if (!content.startsWith("# ")) return { ok: false, reason: "does not start with '# ' heading" };
+  for (const heading of REQUIRED_SECTIONS) {
+    if (!content.includes(heading)) return { ok: false, reason: `missing section: ${heading}` };
+  }
+  return { ok: true };
+}
+
 function formatTurns(turns: ConversationTurn[]): string {
   if (!turns.length) return "(no recent conversation)";
   return turns
@@ -51,13 +75,39 @@ function buildUserMessage(args: SynthesizeArgs): string {
   return parts.join("\n");
 }
 
+async function attemptOnce(
+  system: string,
+  userMessage: string,
+  deps: SynthesizeDeps
+): Promise<{ ok: true; content: string } | { ok: false; reason: string; cause?: unknown }> {
+  let raw: string;
+  try {
+    raw = await deps.callApi(system, userMessage);
+  } catch (e) {
+    return { ok: false, reason: "callApi threw", cause: e };
+  }
+  const v = validateSpec(raw);
+  if (!v.ok) return { ok: false, reason: `malformed: ${v.reason}` };
+  return { ok: true, content: raw };
+}
+
 export async function synthesizeSpec(
   args: SynthesizeArgs,
   deps: SynthesizeDeps
 ): Promise<string> {
   const system = getPmSynthesizerSystemPrompt();
   const userMessage = buildUserMessage(args);
-  return deps.callApi(system, userMessage);
+
+  const first = await attemptOnce(system, userMessage, deps);
+  if (first.ok) return first.content;
+
+  const second = await attemptOnce(system, userMessage, deps);
+  if (second.ok) return second.content;
+
+  throw new SynthesizerError(
+    `synthesizer failed twice: first attempt — ${first.reason}; second — ${second.reason}`,
+    second.cause ?? first.cause
+  );
 }
 
 export async function writeSpecFile(
