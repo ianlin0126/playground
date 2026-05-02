@@ -10,6 +10,7 @@ import {
   getGuardianSystemPrompt,
   getDefaultGuardianSystemPrompt,
   getWorkerSystemPrompt,
+  getPmSynthesizerSystemPrompt,
   STARTER_GAMES,
 } from "./prompts";
 
@@ -108,5 +109,51 @@ describe("getWorkerSystemPrompt", () => {
   it("ends with a GAME_READY marker spec", () => {
     const prompt = getWorkerSystemPrompt("/tmp/x", 3000);
     expect(prompt).toContain("GAME_READY: games/<slug>/index.html");
+  });
+});
+
+describe("getPmSynthesizerSystemPrompt", () => {
+  it("identifies the role as a kids' game studio PM", () => {
+    const p = getPmSynthesizerSystemPrompt();
+    expect(p).toMatch(/product manager/i);
+    expect(p).toMatch(/kids/i);
+  });
+
+  it("includes the spec.md template with all 6 sections", () => {
+    const p = getPmSynthesizerSystemPrompt();
+    expect(p).toContain("## Concept");
+    expect(p).toContain("## Goal");
+    expect(p).toContain("## Controls");
+    expect(p).toContain("## Game elements");
+    expect(p).toContain("## Look & feel");
+    expect(p).toContain("## Change log");
+  });
+
+  it("documents the three marker variants", () => {
+    const p = getPmSynthesizerSystemPrompt();
+    expect(p).toContain("(_kid_)");
+    expect(p).toContain("(_inferred_)");
+    expect(p).toContain("(_inferred-from-code_)");
+  });
+
+  it("states the preservation rule for revisions", () => {
+    const p = getPmSynthesizerSystemPrompt();
+    expect(p).toMatch(/preserve/i);
+  });
+
+  it("states change log is append-only", () => {
+    const p = getPmSynthesizerSystemPrompt();
+    expect(p).toMatch(/append/i);
+  });
+
+  it("forbids implementation language", () => {
+    const p = getPmSynthesizerSystemPrompt();
+    expect(p).toMatch(/no implementation/i);
+  });
+
+  it("requires markdown-only output (no preamble)", () => {
+    const p = getPmSynthesizerSystemPrompt();
+    expect(p).toMatch(/only.*markdown/i);
+    expect(p).toMatch(/no prose/i);
   });
 });
