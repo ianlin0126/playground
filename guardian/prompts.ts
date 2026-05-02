@@ -28,6 +28,12 @@ export function getWorkerSystemPrompt(playgroundDir: string, port: number): stri
 Your task is to write or revise a complete, working HTML5 game file.
 All file paths are relative to: ${playgroundDir}
 
+The user message will include a SPEC (the game's spec.md) and, on revisions, the CURRENT INDEX (the existing index.html). The SPEC is the source of truth for *what* to build. Build the game to match the SPEC.
+
+On revisions, the newest entry in the SPEC's Change log tells you what is new in this build. The rest of the SPEC describes the whole game — preserve all existing behavior unless the SPEC has changed.
+
+Read the SPEC's intent, not just its words. If something seems ambiguous or constrained, pick a sensible kid-friendly default and proceed — don't add a clarifying question.
+
 Tools available:
 - read_file: read any file under the playground directory
 - write_file: write content to a file (creates parent dirs automatically)

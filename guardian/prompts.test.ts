@@ -110,6 +110,22 @@ describe("getWorkerSystemPrompt", () => {
     const prompt = getWorkerSystemPrompt("/tmp/x", 3000);
     expect(prompt).toContain("GAME_READY: games/<slug>/index.html");
   });
+
+  it("treats the embedded SPEC as the source of truth", () => {
+    const p = getWorkerSystemPrompt("/tmp/x", 3000);
+    expect(p).toMatch(/SPEC.*source of truth/is);
+  });
+
+  it("tells the builder to read the change-log entry for what is new in revisions", () => {
+    const p = getWorkerSystemPrompt("/tmp/x", 3000);
+    expect(p).toMatch(/change log/i);
+  });
+
+  it("instructs the builder to pick a kid-friendly default rather than asking back", () => {
+    const p = getWorkerSystemPrompt("/tmp/x", 3000);
+    expect(p).toMatch(/sensible.*default/i);
+    expect(p).toMatch(/don.t add a clarifying question/i);
+  });
 });
 
 describe("getPmSynthesizerSystemPrompt", () => {
