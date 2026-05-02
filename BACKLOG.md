@@ -115,3 +115,66 @@ the original list have been fixed; the rest are queued here for triage.
   published.json consistency.
 - **Fix:** none simple; document the failure modes or add a reconciliation
   pass on startup.
+
+---
+
+## Phase 1 verification — PM synthesizer + per-game spec.md
+
+Implementation: see `docs/superpowers/plans/2026-05-02-guardian-pm-synthesizer-plan.md`.
+Spec: see `docs/superpowers/specs/2026-05-02-guardian-pm-synthesizer-design.md`.
+
+Run all four scenarios after a deploy of Phase 1 changes. Each scenario takes 1–3 minutes.
+
+### V1 — Brand new game
+
+1. Open Telegram; have the kid (or test account) ask for a new game by name (e.g. "make a snail racing game").
+2. Walk through the natural Q&A (1–3 clarifying questions).
+3. Confirm the build with "yes".
+4. Verify on disk:
+   - `games/<slug>/spec.md` exists.
+   - All 6 H2 sections present (`grep -c '^## ' games/<slug>/spec.md` returns `6`).
+   - At least 2 lines marked `(_kid_)`, others marked `(_inferred_)`.
+   - Change log has exactly one line, dated today.
+5. Verify the game URL works in a browser.
+
+### V2 — Revision of a game with existing spec.md
+
+Pre-req: V1 done.
+
+1. Open Telegram; ask to update the V1 game (e.g. "make the snails wear hats").
+2. Confirm the build.
+3. Verify on disk:
+   - `spec.md` change log gained exactly one new line.
+   - Pre-existing bullets are byte-for-byte unchanged (compare via `git diff` or `diff <(git show HEAD:games/<slug>/spec.md) games/<slug>/spec.md`).
+   - The Game elements section reflects the new "hats" detail.
+4. Verify the new game URL works.
+
+### V3 — Lazy backfill (revision of a legacy game without spec.md)
+
+Pick any game from `games/manifest.json` that has no `spec.md` (e.g. `catch-the-stars`).
+
+1. Open Telegram; ask to update that game (e.g. "make the stars sparkle more").
+2. Confirm the build.
+3. Verify on disk:
+   - `games/<slug>/spec.md` was created.
+   - Several bullets are marked `(_inferred-from-code_)` (the reverse-engineered ones).
+   - Change log's first entry says something like `spec backfilled from existing game`.
+4. Verify the updated game URL works.
+
+### V4 — Synthesizer failure → fallback spec
+
+This simulates the synthesizer failing both retries.
+
+1. Temporarily break the Anthropic API key for the synthesizer:
+   ```bash
+   # In .env, prepend a bogus character to ANTHROPIC_API_KEY (keep a backup)
+   ```
+   Restart the guardian server. (Note: this also breaks the kid-facing guardian, so V4 is
+   typically run as a quick-revert: edit, restart, send one Telegram message, revert, restart.)
+2. Send a build request and confirm it.
+3. Server stderr should log `[telegram] synthesizer failed twice — using fallback spec`.
+4. Verify on disk:
+   - `games/<slug>/spec.md` exists.
+   - Concept section contains the kid's last message text.
+   - Change log entry says `synthesizer failed; build/update from raw kid message`.
+5. Restore the API key, restart the server.
