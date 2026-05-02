@@ -133,3 +133,62 @@ describe("writeSpecFile", () => {
     expect(files).toContain("spec.md");
   });
 });
+
+describe("synthesizeSpec — revisions with prior spec", () => {
+  const priorSpec = `# Bouncy Frog 🐸
+
+## Concept
+A frog jumps from log to log. (_kid_)
+
+## Change log
+- **2026-05-01** — initial build
+`;
+
+  it("includes the prior spec in the user message", async () => {
+    let captured = "";
+    await synthesizeSpec(
+      {
+        gameName: "Bouncy Frog",
+        slug: "bouncy-frog",
+        isRevision: true,
+        conversationTurns: [
+          { role: "user", content: "give the frog a sword" },
+        ],
+        priorSpec,
+        today: "2026-05-04",
+      },
+      {
+        callApi: async (_, userMessage) => {
+          captured = userMessage;
+          return priorSpec + "- **2026-05-04** — frog now has a sword\n";
+        },
+      }
+    );
+    expect(captured).toContain("PRIOR SPEC");
+    expect(captured).toContain("A frog jumps from log to log.");
+  });
+
+  it("does NOT include lazy-backfill instructions when a prior spec exists", async () => {
+    let captured = "";
+    await synthesizeSpec(
+      {
+        gameName: "Bouncy Frog",
+        slug: "bouncy-frog",
+        isRevision: true,
+        conversationTurns: [],
+        priorSpec,
+        existingIndexHtml: "<html><body>...</body></html>",  // even if both passed, prior spec wins
+        today: "2026-05-04",
+      },
+      {
+        callApi: async (_, userMessage) => {
+          captured = userMessage;
+          return priorSpec;
+        },
+      }
+    );
+    expect(captured).toContain("PRIOR SPEC");
+    expect(captured).not.toContain("LAZY BACKFILL");
+    expect(captured).not.toContain("EXISTING INDEX.HTML");
+  });
+});
