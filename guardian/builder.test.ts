@@ -195,3 +195,59 @@ describe("BuildNotPickedUpError", () => {
     expect(err.message).toContain("not picked up");
   });
 });
+
+import { buildPromptForTest } from "./builder";
+
+describe("buildPrompt with SPEC", () => {
+  const sampleSpec = `# Star Catcher 🌟\n\n## Concept\nCatch falling stars (_kid_)\n\n## Goal\nGet 10 stars (_kid_)\n\n## Controls\n- tap (_kid_)\n\n## Game elements\n- **Player:** basket (_kid_)\n\n## Look & feel\n- **Theme / setting:** night sky (_kid_)\n\n## Change log\n- **2026-05-02** — initial build\n`;
+
+  it("embeds the SPEC under a SPEC: heading for new builds", () => {
+    const prompt = buildPromptForTest({
+      gameName: "Star Catcher",
+      slug: "star-catcher",
+      isRevision: false,
+      specContent: sampleSpec,
+      port: 3000,
+    });
+    expect(prompt).toContain("SPEC:");
+    expect(prompt).toContain("# Star Catcher 🌟");
+    expect(prompt).toContain("## Change log");
+  });
+
+  it("embeds the SPEC and the existing index.html for revisions", () => {
+    const prompt = buildPromptForTest({
+      gameName: "Star Catcher",
+      slug: "star-catcher",
+      isRevision: true,
+      specContent: sampleSpec,
+      existingHtml: "<!DOCTYPE html><html><body>old game</body></html>",
+      port: 3000,
+    });
+    expect(prompt).toContain("SPEC:");
+    expect(prompt).toContain("CURRENT INDEX:");
+    expect(prompt).toContain("old game");
+  });
+
+  it("does not embed raw conversation turns", () => {
+    const prompt = buildPromptForTest({
+      gameName: "Star Catcher",
+      slug: "star-catcher",
+      isRevision: false,
+      specContent: sampleSpec,
+      port: 3000,
+    });
+    expect(prompt).not.toMatch(/Recent conversation/i);
+  });
+
+  it("includes the verification checklist and GAME_READY marker", () => {
+    const prompt = buildPromptForTest({
+      gameName: "Star Catcher",
+      slug: "star-catcher",
+      isRevision: false,
+      specContent: sampleSpec,
+      port: 3000,
+    });
+    expect(prompt).toContain("GAME_READY: games/star-catcher/index.html");
+    expect(prompt).toMatch(/onclick/);  // verification step still mentions IIFE/onclick check
+  });
+});

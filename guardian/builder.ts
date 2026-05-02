@@ -70,27 +70,34 @@ export function getExistingGames(): Array<{ id: string; name: string }> {
   return readManifest(gamesDir).map(({ id, name }) => ({ id, name }));
 }
 
-type ConversationTurn = { role: string; content: string };
-
-function formatConversationContext(turns: ConversationTurn[]): string {
-  if (!turns.length) return "";
-  const lines = turns.map((t) => {
-    const speaker = t.role === "user" ? `${config.kidName} (kid)` : "Guardian";
-    return `${speaker}: ${typeof t.content === "string" ? t.content : "[image/media]"}`;
-  });
-  return `\nRecent conversation (for context):\n${lines.join("\n")}\n`;
+/**
+ * Mirrors buildGame's internal slug resolution. If gameId names an existing
+ * manifest entry, returns that entry's slug; otherwise falls back to toSlug(gameName).
+ * Exported so callers (telegram.ts) can place spec.md at the same slug-keyed path
+ * the builder will use, without duplicating the manifest read.
+ */
+export function resolveSlug(gameName: string, gameId?: string): string {
+  if (gameId) {
+    const gamesDir = join(config.playgroundDir, "games");
+    const manifestPath = join(gamesDir, "manifest.json");
+    if (existsSync(manifestPath)) {
+      try {
+        const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Array<{ id?: string; slug: string }>;
+        const existing = manifest.find((e) => e.id === gameId);
+        if (existing) return existing.slug;
+      } catch { /* fall through */ }
+    }
+  }
+  return toSlug(gameName);
 }
 
 function buildPrompt(
-  gameName: string,
   slug: string,
   isRevision: boolean,
-  existingHtml?: string,
-  revisionRequest?: string,
-  conversationContext?: ConversationTurn[]
+  specContent: string,
+  existingHtml: string | undefined,
+  port: number
 ): string {
-  const context = conversationContext?.length ? formatConversationContext(conversationContext) : "";
-
   const requirements = `Requirements:
 - Single self-contained index.html — all CSS and JS inline, zero external dependencies
 - Mobile-first: tap targets >= 44px, text >= 24px, bright cheerful colors
@@ -100,7 +107,7 @@ function buildPrompt(
 - Immediately playable — jump straight into the game, no instructions screen needed`;
 
   const verifySteps = `After writing the file, verify it works:
-1. Fetch http://localhost:${config.port}/games/${slug}/ and confirm you get HTML back
+1. Fetch http://localhost:${port}/games/${slug}/ and confirm you get HTML back
 2. Read the written file and check:
    a. It ends with </html> — confirm it is not truncated
    b. Any onclick="foo()" attributes — confirm foo is declared at TOP-LEVEL scope, not inside an IIFE or nested function. If not, fix it: either move functions to top-level or replace onclick with addEventListener inside the closure.
@@ -111,27 +118,39 @@ function buildPrompt(
 When you are satisfied the game works, output exactly this line as your final output:
 GAME_READY: games/${slug}/index.html`;
 
-  if (isRevision && existingHtml) {
-    return `Here is the current game at games/${slug}/index.html:
+  const specBlock = `SPEC:
+${specContent}`;
 
-${existingHtml}
-${context}
-Revision request: ${revisionRequest ?? "Make it better and more fun!"}
+  const indexBlock = isRevision && existingHtml
+    ? `CURRENT INDEX: (the existing games/${slug}/index.html — the newest change-log entry in the SPEC tells you what to change)
+${existingHtml}`
+    : "";
 
-Apply the change to games/${slug}/index.html.
+  const action = isRevision
+    ? `Apply the change to games/${slug}/index.html so it matches the SPEC.`
+    : `Write the complete game to games/${slug}/index.html so it matches the SPEC.`;
 
-${requirements}
+  return [
+    specBlock,
+    indexBlock,
+    action,
+    requirements,
+    verifySteps,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
 
-${verifySteps}`;
-  }
-
-  return `Build a browser game called "${gameName}" for a 7–8 year old child.
-${context}
-Write the complete game to: games/${slug}/index.html
-
-${requirements}
-
-${verifySteps}`;
+// Test-only adapter so tests can build prompts without going through buildGame.
+export function buildPromptForTest(args: {
+  gameName: string;
+  slug: string;
+  isRevision: boolean;
+  specContent: string;
+  existingHtml?: string;
+  port: number;
+}): string {
+  return buildPrompt(args.slug, args.isRevision, args.specContent, args.existingHtml, args.port);
 }
 
 // ── Primary path: file-based job queue processed by the parent's Claude Code session ──
@@ -207,8 +226,8 @@ async function buildGameViaJobQueue(
   slug: string,
   isRevision: boolean,
   existingHtml: string | undefined,
-  revisionRequest: string | undefined,
-  conversationContext: ConversationTurn[],
+  specContent: string,
+  specPath: string,
   chatId: number | undefined,
   onProgress?: (msg: string) => void
 ): Promise<{ slug: string; url: string; jobPath: string }> {
@@ -237,11 +256,13 @@ async function buildGameViaJobQueue(
 
   const id = `${Date.now()}-${slug}`;
   const jobPath = join(JOBS_DIR, `${id}.json`);
-  const prompt = buildPrompt(gameName, slug, isRevision, existingHtml, revisionRequest, conversationContext);
+  const prompt = buildPrompt(slug, isRevision, specContent, existingHtml, config.port);
 
   writeFileSync(jobPath, JSON.stringify({
     id, gameName, slug, isRevision,
-    revisionRequest: revisionRequest ?? null,
+    revisionRequest: null,  // legacy field — no longer populated; kept for back-compat
+    specContent,
+    specPath,
     chatId: chatId ?? null,
     prompt, status: "pending",
     createdAt: new Date().toISOString(),
@@ -249,6 +270,7 @@ async function buildGameViaJobQueue(
     playgroundDir: config.playgroundDir,
     pickedUpAt: null, completedAt: null, url: null, error: null,
     telegramSentAt: null,
+    claimedBy: null,
   }, null, 2));
 
   console.log(`[builder] Job queued for Claude Code session: ${jobPath}`);
@@ -261,29 +283,20 @@ async function buildGameViaJobQueue(
 export async function buildGame(
   gameName: string,
   chatId: number | undefined,
-  revisionRequest?: string,
+  specContent: string,
+  specPath: string,
   onProgress?: (msg: string) => void,
-  conversationContext: ConversationTurn[] = [],
   gameId?: string
 ): Promise<{ slug: string; url: string; jobPath: string }> {
   const gamesDir = join(config.playgroundDir, "games");
-  let slug = toSlug(gameName);
   mkdirSync(gamesDir, { recursive: true });
 
-  // If a gameId was supplied, resolve it to the exact existing slug
-  if (gameId) {
-    const manifest = readManifest(gamesDir);
-    const existing = manifest.find((e) => e.id === gameId);
-    if (existing && existsSync(join(gamesDir, existing.slug, "index.html"))) {
-      console.log(`[builder] ID-resolved game "${gameId}" → slug "${existing.slug}"`);
-      slug = existing.slug;
-    }
-  }
+  let slug = resolveSlug(gameName, gameId);
 
   const isRevision = existsSync(join(gamesDir, slug, "index.html"));
   const existingHtml = isRevision ? readFileSync(join(gamesDir, slug, "index.html"), "utf8") : undefined;
 
-  const result = await buildGameViaJobQueue(gameName, slug, isRevision, existingHtml, revisionRequest, conversationContext, chatId, onProgress);
+  const result = await buildGameViaJobQueue(gameName, slug, isRevision, existingHtml, specContent, specPath, chatId, onProgress);
   updateManifest(gamesDir, gameName, result.slug, gameId);
   return result;
 }
