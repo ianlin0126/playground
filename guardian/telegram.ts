@@ -664,7 +664,7 @@ export async function recoverOrphanedJobs(): Promise<void> {
       ) {
         console.log(`[telegram] Recovering orphaned job ${f}, re-sending URL...`);
         try {
-          const msg = job.revisionRequest
+          const msg = job.isRevision
             ? `✅ Updated! Same link: ${job.url} 🎉`
             : `Here it is!! Open this on your tablet: ${job.url} 🎉`;
           await sendMessage(job.chatId as number, msg);
