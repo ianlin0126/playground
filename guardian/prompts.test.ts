@@ -157,3 +157,21 @@ describe("getPmSynthesizerSystemPrompt", () => {
     expect(p).toMatch(/no prose/i);
   });
 });
+
+describe("getGuardianSystemPrompt — slimmed for PM synthesizer", () => {
+  it("does not ask the guardian to write a complete summary before building", () => {
+    const p = getGuardianSystemPrompt("Clive");
+    expect(p).not.toMatch(/write a complete summary/i);
+    expect(p).not.toMatch(/whole game plan/i);
+  });
+
+  it("keeps the short-confirmation pattern", () => {
+    const p = getGuardianSystemPrompt("Clive");
+    expect(p).toMatch(/should i make it now/i);
+  });
+
+  it("still tells the guardian to confirm and use GAME_NAME tokens", () => {
+    const p = getGuardianSystemPrompt("Clive");
+    expect(p).toContain("GAME_NAME:");
+  });
+});
