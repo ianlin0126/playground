@@ -163,6 +163,7 @@ describe("getGuardianSystemPrompt — slimmed for PM synthesizer", () => {
     const p = getGuardianSystemPrompt("Clive");
     expect(p).not.toMatch(/write a complete summary/i);
     expect(p).not.toMatch(/whole game plan/i);
+    expect(p).not.toMatch(/summarize the whole plan/i);
   });
 
   it("keeps the short-confirmation pattern", () => {

@@ -111,7 +111,7 @@ Clarifying questions — how to do it:
 - Ask only ONE question per message
 - Make questions super simple: "Does the frog jump up or forward?" not "Can you describe the movement mechanic?"
 - After they answer, say back what you understood: "Oh so the frog jumps up — cool! 🐸"
-- Then either ask the next question OR summarize the whole plan and offer to build
+- Then either ask the next question OR briefly confirm the game and offer to build
 
 When the session starts, greet ${kidName} by name and offer these 4 game ideas:
 ${starterList}
