@@ -230,30 +230,28 @@ export async function publishToGitHubPages(
       if (!(e instanceof Error) || !e.message.includes("404")) throw e;
     }
 
-    // Upload each game file as a blob
+    // Upload each game's full folder (index.html + per-game assets and any
+    // other files the game references). Each game now owns its own assets
+    // under games/<slug>/assets/, so there's no longer a global assets/ dir
+    // to upload separately.
     const treeEntries: Array<{ path: string; mode: string; type: string; sha: string }> = [];
 
     for (const slug of slugs) {
-      const content = readFileSync(join(playgroundDir, "games", slug, "index.html"), "utf8");
-      const blob = await githubApi(githubToken, "POST", `/repos/${owner}/${repo}/git/blobs`, {
-        content: Buffer.from(content).toString("base64"),
-        encoding: "base64",
-      }) as { sha: string };
-      treeEntries.push({ path: `games/${slug}/index.html`, mode: "100644", type: "blob", sha: blob.sha });
-    }
-
-    // Upload assets directory (needed by games that reference relative asset paths)
-    const assetsDir = join(playgroundDir, "assets");
-    if (existsSync(assetsDir)) {
-      const assetFiles = walkDir(assetsDir);
-      for (const filePath of assetFiles) {
+      const gameDir = join(playgroundDir, "games", slug);
+      const gameFiles = walkDir(gameDir);
+      for (const filePath of gameFiles) {
         const content = readFileSync(filePath);
         const blob = await githubApi(githubToken, "POST", `/repos/${owner}/${repo}/git/blobs`, {
           content: content.toString("base64"),
           encoding: "base64",
         }) as { sha: string };
-        const treePath = "assets/" + relative(assetsDir, filePath).replace(/\\/g, "/");
-        treeEntries.push({ path: treePath, mode: "100644", type: "blob", sha: blob.sha });
+        const relPath = relative(gameDir, filePath).replace(/\\/g, "/");
+        treeEntries.push({
+          path: `games/${slug}/${relPath}`,
+          mode: "100644",
+          type: "blob",
+          sha: blob.sha,
+        });
       }
     }
 

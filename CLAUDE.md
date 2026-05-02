@@ -5,8 +5,7 @@ This file provides guidance for AI assistants (Claude and others) working with t
 ## Repository Overview
 
 **Repository:** `ianlin0126/playground`
-**Purpose:** Kid-friendly applications and games targeted at children around 8 years old.
-**Status:** Freshly initialized — no source files committed yet.
+**Purpose:** A generic platform for parents to build kid-friendly games with their children. The platform code is intentionally free of any specific games or personal artwork — those live in a separate companion repo.
 
 ### Audience
 
@@ -15,7 +14,69 @@ This file provides guidance for AI assistants (Claude and others) working with t
 - **Reading level:** Short sentences, simple words, large readable text
 - **Interaction style:** Intuitive controls; minimize reliance on reading for core gameplay
 
-> Update this section as the project takes shape: describe the chosen tech stack and architecture here.
+---
+
+## Repository Architecture — two-repo split
+
+The platform is split across two independent git repos that share the same on-disk filesystem layout:
+
+| Repo | Purpose | What lives here |
+|---|---|---|
+| `ianlin0126/playground` (this repo) | Generic platform code, shareable as-is | `guardian/`, `dashboard/`, `tools/`, `CLAUDE.md`, `README.md`, `BACKLOG.md`, `package.json`, `bun.lock`, `.env.example`, `.gitignore` |
+| `ianlin0126/playground-games` | A user's selected games + per-game custom assets/specs/plans | `games/<slug>/index.html`, `games/<slug>/assets/`, `games/<slug>/design.md`, `games/<slug>/plan.md`, `games/<slug>/sprite-map.json`, `games/manifest.json`, `games/published.json` |
+
+### How the two repos coexist locally
+
+- The platform repo is checked out at `~/ai-workspace/playground/`.
+- The games repo is checked out as a **nested independent repo** at `~/ai-workspace/playground/games/` — its own `.git` directory lives inside `playground/games/.git`.
+- The platform's `.gitignore` excludes `games/` so git treats them as completely separate. There is no submodule, no symlink — just two repos that happen to share a directory tree.
+- Run `git status` from `playground/` to see platform changes; `cd games && git status` to see games changes.
+
+### Per-game folder convention
+
+Each game owns everything it needs in `games/<slug>/`:
+
+```
+games/space-shooter/
+├── index.html                  # the playable game
+├── assets/                     # game-specific images / sprites / atlases
+│   └── space-shooter-atlas.png
+├── sprite-map.json             # build artifact (sprite coordinates)
+├── design.md                   # design spec (history, decisions)
+├── plan.md                     # implementation plan
+└── source-sheet.png            # original source art (kept private; not deployed)
+```
+
+In the game's `index.html`, asset references use **relative paths inside the game folder**:
+
+```js
+ATLAS.src = './assets/space-shooter-atlas.png';
+```
+
+NOT `'../../assets/...'` — that pattern was removed when the global `assets/` dir was eliminated from the platform.
+
+### Where things go
+
+| Type of file | Repo |
+|---|---|
+| Platform code (guardian, dashboard, tools) | platform |
+| Generic dev tools (atlas-extract.py) | platform |
+| Tests for platform code | platform |
+| Documentation about the platform | platform |
+| Guardian bug tracker (`BACKLOG.md`) | platform |
+| Specific games | games |
+| Custom artwork for specific games | games |
+| Specs and plans for specific games | games |
+| Sprite-map JSON for specific games | games |
+| `games/manifest.json` (catalog) | games |
+| `games/published.json` (gh-pages state) | games |
+| Kid's experimental builds via the guardian | games (untracked in working tree until committed) |
+
+### Publisher → GitHub Pages flow
+
+`guardian/publisher.ts`'s `publishToGitHubPages()` walks `games/<slug>/` for each published slug and uploads everything (index.html + per-game assets + any other files in the folder) to the `gh-pages` branch of the `GITHUB_REPO` configured in `.env`. With `GITHUB_REPO=ianlin0126/playground-games`, published games are served at `https://ianlin0126.github.io/playground-games/games/<slug>/`.
+
+There is no longer a global `assets/` dir at the platform-repo root — assets always live under their owning game's folder.
 
 ---
 
