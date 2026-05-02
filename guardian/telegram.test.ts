@@ -20,6 +20,7 @@ function flagsMessage(text: string): boolean {
 }
 
 const BUILD_HALLUCINATION_RE = /\b(right now|working on it|on it[!,. ]|give me a sec|i'?m (building|making|updating|creating)|building it|making it|updating it)\b/i;
+const BUILD_CONFIRMATION_QUESTION_RE = /\bshould i\b.{0,80}\b(make|build|update|create|do)\b.{0,80}\bnow\b/i;
 
 describe("isFrustrated", () => {
   it("matches negative signal phrases", () => {
@@ -270,6 +271,36 @@ describe("BUILD_HALLUCINATION_RE", () => {
     expect(BUILD_HALLUCINATION_RE.test("on it!Stay tuned")).toBe(true); // "!" then \w — matches
     // Bare "on it" with no punctuation also misses (the [!,. ] is required)
     expect(BUILD_HALLUCINATION_RE.test("on it")).toBe(false);
+  });
+});
+
+describe("BUILD_CONFIRMATION_QUESTION_RE", () => {
+  it("matches the canonical confirmation phrasings", () => {
+    expect(BUILD_CONFIRMATION_QUESTION_RE.test("Should I make it now? 🎮")).toBe(true);
+    expect(BUILD_CONFIRMATION_QUESTION_RE.test("Should I build it now?!")).toBe(true);
+    expect(BUILD_CONFIRMATION_QUESTION_RE.test("Should I update it now?")).toBe(true);
+    expect(BUILD_CONFIRMATION_QUESTION_RE.test("Should I do it now?")).toBe(true);
+  });
+
+  it("matches confirmation phrasings that name the game between the verb and 'now'", () => {
+    // The bug we caught in production: the model named the game between "build" and "now"
+    expect(BUILD_CONFIRMATION_QUESTION_RE.test(
+      "Should I build a brand new Times Table Blaster game now?!"
+    )).toBe(true);
+    expect(BUILD_CONFIRMATION_QUESTION_RE.test(
+      "Should I update your Evolution Ocean World game now?"
+    )).toBe(true);
+  });
+
+  it("does NOT match clarifying questions without 'now'", () => {
+    expect(BUILD_CONFIRMATION_QUESTION_RE.test("Should I make the frog jump higher?")).toBe(false);
+    expect(BUILD_CONFIRMATION_QUESTION_RE.test("Should I update the level design?")).toBe(false);
+    expect(BUILD_CONFIRMATION_QUESTION_RE.test("Should I make a new sound for jumping?")).toBe(false);
+  });
+
+  it("does NOT match unrelated 'now' phrases", () => {
+    expect(BUILD_CONFIRMATION_QUESTION_RE.test("Now what does the frog look like?")).toBe(false);
+    expect(BUILD_CONFIRMATION_QUESTION_RE.test("Cool, now describe the goal!")).toBe(false);
   });
 });
 

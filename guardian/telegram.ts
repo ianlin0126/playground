@@ -447,14 +447,16 @@ async function handleMessage(
   const initialReply = response.content[0].text;
   let reply = initialReply;
 
-  // Safety net: if Claude used build-in-progress language without including a GAME_NAME: token,
-  // it's a hallucinated build — re-prompt once to get a corrected response.
+  // Safety net: if Claude used build-in-progress language OR a confirmation
+  // question ("Should I make it now?") without including a GAME_NAME: token,
+  // it's a forgotten-token case — re-prompt once to get a corrected response.
   const nameMatch = () => reply.match(/^GAME_NAME:\s*(.+)$/m);
   const BUILD_HALLUCINATION_RE = /\b(right now|working on it|on it[!,. ]|give me a sec|i'?m (building|making|updating|creating)|building it|making it|updating it)\b/i;
+  const BUILD_CONFIRMATION_QUESTION_RE = /\bshould i\b.{0,80}\b(make|build|update|create|do)\b.{0,80}\bnow\b/i;
   const initialHasToken = !!nameMatch();
   let halluFired = false;
   let correctedReply: string | null = null;
-  if (!initialHasToken && BUILD_HALLUCINATION_RE.test(reply)) {
+  if (!initialHasToken && (BUILD_HALLUCINATION_RE.test(reply) || BUILD_CONFIRMATION_QUESTION_RE.test(reply))) {
     halluFired = true;
     console.warn("[telegram] Build hallucination detected — re-prompting Claude");
     const corrected = await anthropic.messages.create({
