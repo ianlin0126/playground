@@ -122,3 +122,48 @@ export async function writeSpecFile(
   writeFileSync(tmpPath, content);
   renameSync(tmpPath, finalPath);
 }
+
+/**
+ * Deterministic fallback used when synthesizeSpec() fails. Produces a valid
+ * spec.md (passes validateSpec) so the build can proceed without the kid
+ * noticing. The body is intentionally honest about being a fallback so a
+ * parent reviewing the dashboard can spot it.
+ */
+export function buildFallbackSpec(args: {
+  gameName: string;
+  today: string;
+  conversationTurns: ConversationTurn[];
+  isRevision: boolean;
+}): string {
+  const lastKidMsg = [...args.conversationTurns]
+    .reverse()
+    .find((t) => t.role === "user")
+    ?.content ?? "no kid message captured";
+  const safeKid = lastKidMsg.replace(/\n+/g, " ").slice(0, 200);
+  const verb = args.isRevision ? "update" : "build";
+  return `# ${args.gameName} 🎮
+
+## Concept
+${safeKid} (_kid_)
+
+## Goal
+not specified yet (_inferred_)
+
+## Controls
+- not specified yet (_inferred_)
+
+## Game elements
+- **Player:** not specified yet (_inferred_)
+- **Obstacles / enemies:** not specified yet (_inferred_)
+- **Collectibles / power-ups:** not specified yet (_inferred_)
+- **Levels / progression:** not specified yet (_inferred_)
+
+## Look & feel
+- **Theme / setting:** not specified yet (_inferred_)
+- **Color palette:** not specified yet (_inferred_)
+- **Specific kid asks:** not specified yet (_inferred_)
+
+## Change log
+- **${args.today}** — synthesizer failed; ${verb} from raw kid message
+`;
+}

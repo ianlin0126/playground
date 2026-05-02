@@ -4,7 +4,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { readdirSync } from "fs";
 
-import { synthesizeSpec, writeSpecFile, SynthesizerError } from "./synthesizer";
+import { synthesizeSpec, writeSpecFile, SynthesizerError, buildFallbackSpec, validateSpec } from "./synthesizer";
 
 let testDir: string;
 beforeEach(() => {
@@ -345,5 +345,41 @@ bar (_inferred_)
       })
     ).rejects.toBeInstanceOf(SynthesizerError);
     expect(attempts).toBe(2);
+  });
+});
+
+describe("buildFallbackSpec", () => {
+  it("produces a spec body that passes validateSpec", () => {
+    const s = buildFallbackSpec({
+      gameName: "Frog",
+      today: "2026-05-02",
+      conversationTurns: [{ role: "user", content: "make a frog game" }],
+      isRevision: false,
+    });
+    expect(validateSpec(s).ok).toBe(true);
+  });
+
+  it("captures the most recent kid message in Concept", () => {
+    const s = buildFallbackSpec({
+      gameName: "Frog",
+      today: "2026-05-02",
+      conversationTurns: [
+        { role: "user", content: "old request" },
+        { role: "assistant", content: "ok" },
+        { role: "user", content: "newest request" },
+      ],
+      isRevision: false,
+    });
+    expect(s).toContain("newest request");
+  });
+
+  it("notes 'synthesizer failed' in the change log", () => {
+    const s = buildFallbackSpec({
+      gameName: "Frog",
+      today: "2026-05-02",
+      conversationTurns: [],
+      isRevision: false,
+    });
+    expect(s).toContain("synthesizer failed");
   });
 });

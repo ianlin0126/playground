@@ -4,7 +4,8 @@ import { join } from "path";
 import { config } from "./config";
 import { insertTurn, getRecentTurns, upsertSummary, getLatestSummary } from "./db";
 import { getGuardianSystemPrompt } from "./prompts";
-import { buildGame, BuildNotPickedUpError, getExistingGames, ZOMBIE_THRESHOLD_MS } from "./builder";
+import { buildGame, BuildNotPickedUpError, getExistingGames, ZOMBIE_THRESHOLD_MS, resolveSlug } from "./builder";
+import { synthesizeSpec, writeSpecFile, buildFallbackSpec, SynthesizerError } from "./synthesizer";
 
 // ── State ─────────────────────────────────────────────────────────────────
 
@@ -266,6 +267,31 @@ export function logRawReply(playgroundDir: string, entry: Omit<RawReplyEntry, "t
   }
 }
 
+function todayLocal(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+async function callPmSynthesizerApi(
+  anthropic: Anthropic,
+  system: string,
+  userMessage: string
+): Promise<string> {
+  const r = await anthropic.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 2048,
+    system,
+    messages: [{ role: "user", content: userMessage }],
+  });
+  if (!r.content.length || r.content[0].type !== "text") {
+    throw new Error("non-text response from Anthropic");
+  }
+  return r.content[0].text;
+}
+
 async function handleMessage(
   anthropic: Anthropic,
   chatId: number,
@@ -292,11 +318,63 @@ async function handleMessage(
       insertTurn("guardian", startMsg);
       conversationHistory.push({ role: "assistant", content: startMsg });
       try {
-        const recentContext = conversationHistory.slice(-10).map((m) => ({
+        // Resolve slug + revision state. resolveSlug() is the same helper buildGame() uses internally.
+        const gamesDir = join(config.playgroundDir, "games");
+        const slug = resolveSlug(gameName, gameId);
+        const indexPath = join(gamesDir, slug, "index.html");
+        const specPath = join(gamesDir, slug, "spec.md");
+        const isRevision = existsSync(indexPath);
+
+        // Inputs to the synthesizer
+        const recentContext = conversationHistory.slice(-20).map((m) => ({
           role: m.role,
           content: typeof m.content === "string" ? m.content : "[media]",
         }));
-        const { url, jobPath } = await buildGame(gameName, chatId, revisionRequest, (msg) => sendMessage(chatId, msg).catch(() => {}), recentContext, gameId);
+        const priorSpec = existsSync(specPath) ? readFileSync(specPath, "utf8") : undefined;
+        const existingIndexHtml = !priorSpec && isRevision && existsSync(indexPath)
+          ? readFileSync(indexPath, "utf8")
+          : undefined;
+
+        let specContent: string;
+        try {
+          specContent = await synthesizeSpec(
+            {
+              gameName,
+              slug,
+              isRevision,
+              conversationTurns: recentContext,
+              priorSpec,
+              existingIndexHtml,
+              today: todayLocal(),
+            },
+            {
+              callApi: (system, userMessage) => callPmSynthesizerApi(anthropic, system, userMessage),
+            }
+          );
+        } catch (e) {
+          if (e instanceof SynthesizerError) {
+            console.error("[telegram] synthesizer failed twice — using fallback spec:", (e as SynthesizerError).message);
+            specContent = buildFallbackSpec({
+              gameName,
+              today: todayLocal(),
+              conversationTurns: recentContext,
+              isRevision,
+            });
+          } else {
+            throw e;  // unexpected error — let the outer catch handle it
+          }
+        }
+
+        await writeSpecFile(gamesDir, slug, specContent);
+
+        const { url, jobPath } = await buildGame(
+          gameName,
+          chatId,
+          specContent,
+          specPath,
+          (msg) => sendMessage(chatId, msg).catch(() => {}),
+          gameId
+        );
         const reply = `Here it is!! Open this on your tablet: ${url} 🎉`;
         await sendMessage(chatId, reply);
         insertTurn("guardian", reply);
