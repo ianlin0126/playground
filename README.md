@@ -107,7 +107,7 @@ Once configured, you can publish individual games from the Games section of the 
 
 **1. Create a GitHub repository**
 
-Go to [github.com/new](https://github.com/new) and create a new **public** repository (e.g. `playground-games`). No need to initialise it with any files.
+Go to [github.com/new](https://github.com/new) and create a new **public** repository (e.g. `playground-games`). No need to initialise it with any files. *(Tip: this same repo can also track the source of your selected games — see [Project Structure](#project-structure) below.)*
 
 **2. Create a Personal Access Token**
 
@@ -147,6 +147,20 @@ All settings live in `.env` (gitignored). Edit them directly or via the Settings
 | `KID_TELEGRAM_ID` | Your kid's numeric Telegram user ID |
 | `GITHUB_TOKEN` | Personal access token for publishing to GitHub Pages (optional) |
 | `GITHUB_REPO` | Repository to publish to, in `owner/repo` format (optional) |
+
+---
+
+## Project Structure
+
+This is the **platform** — the guardian server, parent dashboard, and dev tools. It's intentionally generic and contains no games or personal artwork by itself, so it's safe to share or fork as a template.
+
+Games live in `games/<slug>/` on disk and that directory is **gitignored** here by design. Kid-built games via the Telegram bot land there as ephemeral local files — they don't pollute the platform repo.
+
+If you want to **track your favorite games in git** alongside publishing them (the same repo serves both purposes), the recommended workflow is to put the `games/` directory under its own independent git repo. No submodule, no symlink — just `git init` inside `games/` and treat it as a separate project. Set `GITHUB_REPO` in `.env` to point there and the publisher will push to that repo's `gh-pages` branch.
+
+Per-game asset paths use `./assets/...` relative to each game's folder, so games are self-contained and copy-paste portable.
+
+For the full architecture (what's tracked where, asset conventions, publisher details), see [CLAUDE.md](./CLAUDE.md).
 
 ---
 

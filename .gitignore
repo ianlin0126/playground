@@ -4,3 +4,12 @@
 node_modules/
 games/
 docs/
+
+# OS / editor / Python tooling
+.DS_Store
+.pytest_cache/
+__pycache__/
+
+# Local Claude Code / superpowers state
+.claude/
+.superpowers/
