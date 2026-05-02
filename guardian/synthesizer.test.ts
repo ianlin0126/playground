@@ -192,3 +192,58 @@ A frog jumps from log to log. (_kid_)
     expect(captured).not.toContain("EXISTING INDEX.HTML");
   });
 });
+
+describe("synthesizeSpec — lazy backfill (no prior spec, has existing index.html)", () => {
+  const existingHtml = `<!DOCTYPE html>
+<html><head><title>Maze Runner</title></head>
+<body><canvas id="game"></canvas><script>
+// player moves with arrow keys through a maze
+</script></body></html>`;
+
+  it("includes lazy-backfill instructions and the existing index.html", async () => {
+    let captured = "";
+    await synthesizeSpec(
+      {
+        gameName: "Maze Runner",
+        slug: "maze-runner",
+        isRevision: true,
+        conversationTurns: [
+          { role: "user", content: "add a finish line that sparkles" },
+        ],
+        existingIndexHtml: existingHtml,
+        today: "2026-05-02",
+      },
+      {
+        callApi: async (_, userMessage) => {
+          captured = userMessage;
+          return `# Maze Runner 🌀\n## Concept\nA player moves through a maze (_inferred-from-code_).\n## Change log\n- **2026-05-02** — spec backfilled from existing game; added a sparkly finish line\n`;
+        },
+      }
+    );
+    expect(captured).toContain("LAZY BACKFILL");
+    expect(captured).toContain("EXISTING INDEX.HTML");
+    expect(captured).toContain("player moves with arrow keys");
+    expect(captured).toContain("inferred-from-code");
+  });
+
+  it("does NOT include lazy-backfill instructions when no existing html provided (truly new game)", async () => {
+    let captured = "";
+    await synthesizeSpec(
+      {
+        gameName: "Brand New Game",
+        slug: "brand-new",
+        isRevision: false,
+        conversationTurns: [],
+        today: "2026-05-02",
+      },
+      {
+        callApi: async (_, userMessage) => {
+          captured = userMessage;
+          return `# Brand New Game\n## Concept\nx (_inferred_)\n`;
+        },
+      }
+    );
+    expect(captured).not.toContain("LAZY BACKFILL");
+    expect(captured).not.toContain("PRIOR SPEC");
+  });
+});
