@@ -218,7 +218,61 @@ function walkDir(dir: string): string[] {
 
 // ── Main publish function ─────────────────────────────────────────────────
 
+// Module-level mutex. Each publishToGitHubPages call talks directly to the
+// GitHub Git Data API (blob → tree → commit → ref-update), so back-to-back
+// calls produce back-to-back commits on gh-pages — and Pages can't keep up
+// with builds arriving faster than ~30s/build (most error in 0 duration).
+// We serialize calls through a coordinator: while one publish is in-flight,
+// later calls queue (last-write-wins on slugs) and all share a single
+// follow-up commit. Worst case after a burst of N calls: 2 commits (the
+// in-flight one + the merged trailing one).
+let coordinatorRunning = false;
+let pendingPublish: {
+  slugs: string[];
+  resolvers: Array<(r: PublishResult) => void>;
+} | null = null;
+
 export async function publishToGitHubPages(
+  playgroundDir: string,
+  githubToken: string,
+  githubRepo: string,
+  slugs: string[],
+): Promise<PublishResult> {
+  return new Promise<PublishResult>((resolve) => {
+    if (!pendingPublish) {
+      pendingPublish = { slugs, resolvers: [resolve] };
+    } else {
+      pendingPublish.slugs = slugs; // latest intent wins
+      pendingPublish.resolvers.push(resolve);
+    }
+    if (!coordinatorRunning) {
+      coordinatorRunning = true;
+      runPublishCoordinator(playgroundDir, githubToken, githubRepo);
+    }
+  });
+}
+
+async function runPublishCoordinator(
+  playgroundDir: string,
+  githubToken: string,
+  githubRepo: string,
+): Promise<void> {
+  while (pendingPublish) {
+    const batch = pendingPublish;
+    pendingPublish = null;
+
+    let result: PublishResult;
+    try {
+      result = await doPublish(playgroundDir, githubToken, githubRepo, batch.slugs);
+    } catch (e) {
+      result = { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+    for (const resolve of batch.resolvers) resolve(result);
+  }
+  coordinatorRunning = false;
+}
+
+async function doPublish(
   playgroundDir: string,
   githubToken: string,
   githubRepo: string,
