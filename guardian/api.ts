@@ -102,6 +102,7 @@ function handleConfigGet(): Response {
     kidName: config.kidName,
     kidTelegramId: config.kidTelegramId,
     anthropicApiKey: mask(config.anthropicApiKey),
+    openaiApiKey: mask(config.openaiApiKey),
     kidBotToken: mask(config.kidBotToken),
     githubToken: mask(config.githubToken),
     githubRepo: config.githubRepo,
@@ -120,6 +121,11 @@ function handlePublishGet(): Response {
   return json({ publishedEntries, publishedSlugs, hasConfig, pageUrl });
 }
 
+// Final safety net only — if Pages is so badly broken that no build ever
+// completes, force-clear the deploying state after this long so the UI
+// doesn't sit on "Deploying…" forever. Real builds finish in 30s–2min.
+const DEPLOY_TTL_MS = 10 * 60 * 1000;
+
 async function handleDeploymentStatus(): Promise<Response> {
   const entries = readPublishedEntries(config.playgroundDir);
   const deployingEntry = entries.find(e => e.commitSha);
@@ -128,16 +134,46 @@ async function handleDeploymentStatus(): Promise<Response> {
     return json({ built: true, publishedEntries: entries });
   }
 
-  const { built, latestCommit } = await getDeploymentStatus(config.githubToken, config.githubRepo);
+  const status = await getDeploymentStatus(config.githubToken, config.githubRepo);
+  const publishedAtMs = new Date(deployingEntry.publishedAt).getTime();
 
-  // Confirm only when the built commit matches the one we pushed (or if no commit info available)
-  if (built && (!latestCommit || latestCommit === deployingEntry.commitSha)) {
+  // CONFIRMATION RULE: Pages reports a successful build whose updated_at is
+  // at or after our publishedAt. This works regardless of which commit hash
+  // was actually built — bundled "Publish N games" commits, back-to-back
+  // publishes, and any other commit drift all reconcile naturally because
+  // we only care that *some* build finished after we clicked.
+  // Fallback: if Pages doesn't expose updated_at (e.g. /pages endpoint),
+  // a "built" status is enough since we can't time-compare anyway.
+  const builtAfterPublish = status.built && (
+    !status.updatedAt || new Date(status.updatedAt).getTime() >= publishedAtMs
+  );
+
+  if (builtAfterPublish) {
     const confirmed = entries.map(e => ({ slug: e.slug, publishedAt: e.publishedAt }));
     writePublishedEntries(config.playgroundDir, confirmed);
     return json({ built: true, publishedEntries: confirmed });
   }
 
-  return json({ built: false, publishedEntries: entries });
+  // TTL safety net for genuinely-broken Pages (errored forever, infinite
+  // "building", etc.). Surface the underlying status so the dashboard can
+  // tell the user what's wrong instead of silently flipping to "Live".
+  const ageMs = Date.now() - publishedAtMs;
+  if (ageMs > DEPLOY_TTL_MS) {
+    const cleared = entries.map(e => ({ slug: e.slug, publishedAt: e.publishedAt }));
+    writePublishedEntries(config.playgroundDir, cleared);
+    return json({
+      built: true,
+      publishedEntries: cleared,
+      pagesStatus: status.status ?? null,
+      timedOut: true,
+    });
+  }
+
+  return json({
+    built: false,
+    publishedEntries: entries,
+    pagesStatus: status.status ?? null,
+  });
 }
 
 async function handlePublishCheck(req: Request): Promise<Response> {

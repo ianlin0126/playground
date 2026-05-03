@@ -57,6 +57,7 @@ function detectLanIp(): string {
 export const config = {
   kidBotToken: loadEnv("KID_BOT_TOKEN"),
   anthropicApiKey: loadEnv("ANTHROPIC_API_KEY"),
+  openaiApiKey: loadEnv("OPENAI_API_KEY"),
   kidName: loadEnv("KID_NAME"),
   kidTelegramId: Number(loadEnv("KID_TELEGRAM_ID")) || 0,
   githubToken: loadEnv("GITHUB_TOKEN"),
@@ -69,6 +70,7 @@ export const config = {
 export function applyEnvToConfig(fields: Record<string, string>): void {
   if (fields.KID_BOT_TOKEN !== undefined) config.kidBotToken = fields.KID_BOT_TOKEN;
   if (fields.ANTHROPIC_API_KEY !== undefined) config.anthropicApiKey = fields.ANTHROPIC_API_KEY;
+  if (fields.OPENAI_API_KEY !== undefined) config.openaiApiKey = fields.OPENAI_API_KEY;
   if (fields.KID_NAME !== undefined) config.kidName = fields.KID_NAME;
   if (fields.KID_TELEGRAM_ID !== undefined) config.kidTelegramId = Number(fields.KID_TELEGRAM_ID) || 0;
   if (fields.GITHUB_TOKEN !== undefined) config.githubToken = fields.GITHUB_TOKEN;

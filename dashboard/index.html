@@ -265,6 +265,13 @@
             </div>
           </div>
           <div class="settings-row">
+            <span class="settings-label">OpenAI API key</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="settings-value" id="cfg-openaiApiKey">—</span>
+              <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="openEditModal('OPENAI_API_KEY','cfg-openaiApiKey',true)">Edit</button>
+            </div>
+          </div>
+          <div class="settings-row">
             <span class="settings-label">Telegram bot token</span>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="settings-value" id="cfg-kidBotToken">—</span>
@@ -720,6 +727,14 @@ async function checkDeploymentStatus() {
     _publishedSlugs   = new Set(data.publishedEntries.map(e => e.slug));
   }
 
+  // If Pages is in a broken state, surface it to the user so they know to
+  // check repo settings rather than waiting on a build that won't complete.
+  if (data.pagesStatus === 'errored') {
+    showPublishError("GitHub Pages reports an errored build. Check the repo's Settings → Pages or Actions tab.");
+  } else if (data.timedOut) {
+    showPublishError("Deploy didn't confirm within 10 min — Pages may be slow or stuck. The dashboard moved on; verify the live URL works.");
+  }
+
   if (data.built || !_publishedEntries.some(e => e.commitSha)) {
     stopDeploymentPolling();
   }
@@ -884,6 +899,7 @@ async function loadSettings() {
   document.getElementById('cfg-kidName').textContent = cfg.kidName || '—';
   document.getElementById('cfg-kidTelegramId').textContent = cfg.kidTelegramId || '—';
   document.getElementById('cfg-anthropicApiKey').textContent = cfg.anthropicApiKey || '—';
+  document.getElementById('cfg-openaiApiKey').textContent = cfg.openaiApiKey || '—';
   document.getElementById('cfg-kidBotToken').textContent = cfg.kidBotToken || '—';
   document.getElementById('cfg-githubToken').textContent = cfg.githubToken || '—';
   document.getElementById('cfg-githubRepo').textContent = cfg.githubRepo || '—';
