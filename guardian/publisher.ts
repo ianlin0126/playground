@@ -260,14 +260,18 @@ export async function publishToGitHubPages(
     // Skip dev artifacts that don't belong on a public game site:
     // - any *.md (design docs, plans — would also crash Jekyll if it
     //   were enabled, see the .nojekyll blob below)
-    // - sprite-map.json (atlas-extract build artifact; the game embeds
-    //   the same data as a JS literal in index.html)
+    // - any *sprite-map.json (atlas-extract build artifact; the game
+    //   embeds the same data as a JS literal in index.html). Match by
+    //   suffix because games name them <slug>-sprite-map.json.
     // - source-sheet.png (original art reference, not used at runtime)
+    // - .DS_Store (macOS Finder metadata; harmless but pollutes the
+    //   public site)
     function shouldPublish(filePath: string): boolean {
       const basename = filePath.split("/").pop() ?? "";
       if (basename.endsWith(".md")) return false;
-      if (basename === "sprite-map.json") return false;
+      if (basename.endsWith("sprite-map.json")) return false;
       if (basename === "source-sheet.png") return false;
+      if (basename === ".DS_Store") return false;
       return true;
     }
 
