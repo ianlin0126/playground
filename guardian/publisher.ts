@@ -429,23 +429,25 @@ async function doPublish(
 export async function getDeploymentStatus(
   githubToken: string,
   githubRepo: string,
-): Promise<{ built: boolean; latestCommit?: string }> {
+): Promise<{ built: boolean; status?: string; updatedAt?: string }> {
   const parts = githubRepo.split("/");
   if (parts.length !== 2) return { built: false };
   const [owner, repo] = parts;
 
   try {
-    // Legacy branch builds expose the exact commit that was deployed
+    // /pages/builds/latest gives us when (and how) the most recent build ran.
+    // We use updated_at — NOT the commit hash — so back-to-back publishes
+    // don't cause the dashboard to stall waiting for an outdated SHA to match.
     const build = await githubApi(githubToken, "GET", `/repos/${owner}/${repo}/pages/builds/latest`) as {
       status: string;
-      commit: string;
+      updated_at: string;
     };
-    return { built: build.status === "built", latestCommit: build.commit };
+    return { built: build.status === "built", status: build.status, updatedAt: build.updated_at };
   } catch {
-    // Fall back to the pages status field (no commit comparison possible)
+    // Fall back to the overall Pages site status (no per-build timestamp)
     try {
       const pages = await githubApi(githubToken, "GET", `/repos/${owner}/${repo}/pages`) as { status: string };
-      return { built: pages.status === "built" };
+      return { built: pages.status === "built", status: pages.status };
     } catch {
       return { built: false };
     }
