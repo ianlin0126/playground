@@ -129,18 +129,26 @@ describe("getWorkerSystemPrompt", () => {
 });
 
 describe("getPmSynthesizerSystemPrompt", () => {
-  it("identifies the role as a kids' game studio PM", () => {
+  it("identifies the role as a kids' creation studio PM", () => {
     const p = getPmSynthesizerSystemPrompt();
     expect(p).toMatch(/product manager/i);
     expect(p).toMatch(/kids/i);
+    expect(p).toMatch(/creation studio/i);
+  });
+
+  it("frames creations as games, stories, or learning material", () => {
+    const p = getPmSynthesizerSystemPrompt();
+    expect(p).toMatch(/game/i);
+    expect(p).toMatch(/stor/i);
+    expect(p).toMatch(/learn/i);
   });
 
   it("includes the spec.md template with all 6 sections", () => {
     const p = getPmSynthesizerSystemPrompt();
     expect(p).toContain("## Concept");
     expect(p).toContain("## Goal");
-    expect(p).toContain("## Controls");
-    expect(p).toContain("## Game elements");
+    expect(p).toContain("## Interactions");
+    expect(p).toContain("## Elements");
     expect(p).toContain("## Look & feel");
     expect(p).toContain("## Change log");
   });
