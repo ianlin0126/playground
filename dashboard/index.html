@@ -12,7 +12,7 @@
 <body>
 <div id="confirm-modal" class="modal-backdrop" style="display:none" onclick="if(event.target===this)closeModal()">
   <div class="modal-card">
-    <div class="modal-title">Delete game?</div>
+    <div class="modal-title">Delete creation?</div>
     <div class="modal-body" id="modal-body"></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
@@ -44,7 +44,7 @@
     <div class="modal-title">Publish to GitHub Pages</div>
     <div class="modal-body" style="font-size:13px;color:#475569;line-height:1.65">
 
-      <p style="margin-bottom:14px">Share <strong id="gh-kid-name-text">your kid</strong>'s games with family and friends from anywhere. Games will be published to a free public URL on GitHub Pages.</p>
+      <p style="margin-bottom:14px">Share <strong id="gh-kid-name-text">your kid</strong>'s creations with family and friends from anywhere. Creations will be published to a free public URL on GitHub Pages.</p>
 
       <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:14px">
         <p style="font-weight:600;font-size:12px;margin-bottom:8px;color:#334155">How to create a Personal Access Token:</p>
@@ -52,10 +52,10 @@
           <li>On GitHub, click your avatar → <strong>Settings</strong></li>
           <li>Scroll to the bottom → <strong>Developer settings</strong> → <strong>Personal access tokens</strong> → <strong>Fine-grained tokens</strong></li>
           <li>Click <strong>Generate new token</strong>. Give it a name (e.g. "Playground publish") and set an expiry</li>
-          <li>Under <strong>Repository access</strong>, choose <em>Only select repositories</em> and pick your games repo</li>
+          <li>Under <strong>Repository access</strong>, choose <em>Only select repositories</em> and pick your creations repo</li>
           <li>Under <strong>Repository permissions</strong>, set these three to <strong>Read and write</strong>:
             <ul style="padding-left:16px;margin-top:4px">
-              <li><strong>Contents</strong> — to push game files</li>
+              <li><strong>Contents</strong> — to push creation files</li>
               <li><strong>Pages</strong> — to enable GitHub Pages</li>
               <li><strong>Administration</strong> — to configure the Pages source branch</li>
             </ul>
@@ -91,7 +91,7 @@
 
 <div class="shell">
   <div class="sidebar">
-    <div class="sidebar-logo">🎮 Playground</div>
+    <div class="sidebar-logo">✨ Playground</div>
     <div class="nav-item active" data-section="status" onclick="showSection('status', this)">
       <span class="nav-icon">●</span> Status
     </div>
@@ -99,7 +99,7 @@
       <span class="nav-icon">💬</span> Chats
     </div>
     <div class="nav-item" data-section="games" onclick="showSection('games', this)">
-      <span class="nav-icon">🎯</span> Games
+      <span class="nav-icon">🎯</span> Creations
     </div>
     <div class="nav-item" data-section="prompt" onclick="showSection('prompt', this)">
       <span class="nav-icon">🤖</span> Guardian
@@ -170,17 +170,17 @@
           </div>
         </div>
 
-        <!-- Games -->
+        <!-- Creations -->
         <div class="status-block">
           <div class="status-block-header">
-            <div class="status-block-title">🎯 Games</div>
+            <div class="status-block-title">🎯 Creations</div>
           </div>
           <div class="status-row">
             <span class="status-row-label">Total built</span>
             <a href="#" class="status-row-value status-link" id="stat-games" onclick="showSection('games',document.querySelector('[data-section=games]'));return false">—</a>
           </div>
           <div class="status-row">
-            <span class="status-row-label">Game server</span>
+            <span class="status-row-label">Creation server</span>
             <a class="status-row-value status-link" id="server-url" href="#" target="_blank">—</a>
           </div>
         </div>
@@ -194,7 +194,7 @@
         </div>
       </div>
 
-      <!-- GAMES -->
+      <!-- CREATIONS -->
       <div class="section" id="section-games">
 
         <!-- GitHub Pages status bar (always visible) -->
@@ -205,7 +205,7 @@
 
         <!-- Grid -->
         <div class="gl-grid" id="games-grid">
-          <div class="gl-loading">Loading games…</div>
+          <div class="gl-loading">Loading creations…</div>
         </div>
 
       </div>
@@ -229,7 +229,7 @@
         </div>
 
         <div id="prompt-editor" style="display:none">
-          <p class="prompt-hint">✏️ Edit the guardian's personality below. Use plain text — no special syntax needed. The builder automatically receives game details separately.</p>
+          <p class="prompt-hint">✏️ Edit the guardian's personality below. Use plain text — no special syntax needed. The builder automatically receives creation details separately.</p>
           <textarea class="prompt-textarea" id="prompt-textarea" spellcheck="false"></textarea>
           <div class="prompt-actions">
             <button class="btn btn-primary" onclick="savePrompt()">Save Changes</button>
@@ -301,7 +301,7 @@
             <span class="settings-value readonly" id="cfg-playgroundDir">—</span>
           </div>
           <div class="settings-row">
-            <span class="settings-label">Game server port</span>
+            <span class="settings-label">Creation server port</span>
             <span class="settings-value" id="cfg-port">—</span>
           </div>
         </div>
@@ -316,7 +316,7 @@ if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
 }
 
 const SECTIONS = ['status', 'chats', 'games', 'prompt', 'settings'];
-const TITLES   = { status:'Status', chats:'Conversations', games:'Games', prompt:'Guardian System Prompt', settings:'Settings' };
+const TITLES   = { status:'Status', chats:'Conversations', games:'Creations', prompt:'Guardian System Prompt', settings:'Settings' };
 
 let _lanUrl = '';
 let _guardianStatus = 'stopped';
@@ -478,7 +478,7 @@ function escHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ── Game Library ──────────────────────────────────────────────────────────
+// ── Creation Library ──────────────────────────────────────────────────────
 
 const GL_GRADIENTS = [
   ['#ffd89b','#f4845f'],  // warm peach-amber
@@ -518,7 +518,7 @@ function gameEmoji(name) {
 function closeModal() {
   document.getElementById('confirm-modal').style.display = 'none';
   // Reset to default delete state
-  document.querySelector('#confirm-modal .modal-title').textContent = 'Delete game?';
+  document.querySelector('#confirm-modal .modal-title').textContent = 'Delete creation?';
   const btn = document.getElementById('modal-confirm-btn');
   btn.className = 'btn btn-danger-solid';
   btn.textContent = 'Delete';
@@ -550,7 +550,7 @@ function renderStatusBar() {
     el.style.display = 'flex';
     el.innerHTML = `
       <span class="gl-status-dot gl-status-dot-off"></span>
-      <span class="gl-status-text">Publish games to GitHub Pages so Clive can play from anywhere</span>
+      <span class="gl-status-text">Publish creations to GitHub Pages so Clive can play from anywhere</span>
       <button class="gl-status-setup-btn" onclick="openGitHubSetup()">Set up →</button>`;
     return;
   }
@@ -560,13 +560,13 @@ function renderStatusBar() {
   if (n > 0) {
     el.innerHTML = `
       <span class="gl-status-dot gl-status-dot-on"></span>
-      <span class="gl-status-text"><strong>${n} game${n===1?'':'s'} live</strong> at
+      <span class="gl-status-text"><strong>${n} creation${n===1?'':'s'} live</strong> at
         <a class="gl-status-link" href="${_publishPageUrl}" target="_blank">${_publishPageUrl.replace('https://','')} →</a>
       </span>`;
   } else {
     el.innerHTML = `
       <span class="gl-status-dot gl-status-dot-on"></span>
-      <span class="gl-status-text">Connected — no games published yet</span>`;
+      <span class="gl-status-text">Connected — no creations published yet</span>`;
   }
 }
 
@@ -577,8 +577,8 @@ function renderGames(games) {
     grid.innerHTML = `
       <div class="gl-empty">
         <div class="gl-empty-icon">🎮</div>
-        <div class="gl-empty-title">No games built yet</div>
-        <div class="gl-empty-sub">Ask Clive to request a game via Telegram</div>
+        <div class="gl-empty-title">No creations yet</div>
+        <div class="gl-empty-sub">Ask Clive to request a creation via Telegram</div>
       </div>`;
     return;
   }
@@ -748,7 +748,7 @@ function deleteGame(slug) {
   const name = game ? game.name : slug;
   const isLive = _publishedSlugs.has(slug);
 
-  document.querySelector('#confirm-modal .modal-title').textContent = 'Delete game?';
+  document.querySelector('#confirm-modal .modal-title').textContent = 'Delete creation?';
   document.getElementById('modal-body').innerHTML = isLive
     ? `This will remove <strong>${escHtml(name)}</strong> and unpublish it from GitHub Pages. This cannot be undone.`
     : `This will permanently remove <strong>${escHtml(name)}</strong>. This cannot be undone.`;

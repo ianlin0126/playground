@@ -15,7 +15,7 @@
     <!-- Step 1: Welcome -->
     <div class="step active" id="step-1">
       <h1>Welcome to Playground!</h1>
-      <p class="subtitle">Let's get your AI-powered game studio ready. This takes about 5 minutes. You'll need a Claude Code account and a Telegram account.</p>
+      <p class="subtitle">Let's get your AI-powered creation studio ready. This takes about 5 minutes. You'll need a Claude Code account and a Telegram account.</p>
       <div class="wizard-actions">
         <button class="btn btn-primary" onclick="goTo(2)">Get started →</button>
       </div>
@@ -24,7 +24,7 @@
     <!-- Step 2: Claude Code check -->
     <div class="step" id="step-2">
       <h1>Claude Code</h1>
-      <p class="subtitle">Playground uses Claude Code so you can build and fix games alongside your kid. Let's make sure it's ready.</p>
+      <p class="subtitle">Playground uses Claude Code so you can build and fix creations alongside your kid. Let's make sure it's ready.</p>
       <div id="claude-badge" class="check-badge wait">Checking...</div>
       <div id="claude-instructions-install" style="display:none" class="instructions">
         <p style="margin-bottom:12px;color:#334155;">Claude Code is not installed. Please:</p>
@@ -49,7 +49,7 @@
     <!-- Step 3: Anthropic API key -->
     <div class="step" id="step-3">
       <h1>Anthropic API Key</h1>
-      <p class="subtitle">The guardian uses the Claude API to chat with your kid and build games. Paste your API key below.</p>
+      <p class="subtitle">The guardian uses the Claude API to chat with your kid and build creations. Paste your API key below.</p>
       <p style="font-size:12px;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;line-height:1.6;margin-bottom:16px">
         🔒 Your API key is saved <strong>only</strong> to the local <code style="background:#e2e8f0;padding:1px 5px;border-radius:4px">.env</code> file on this machine and is never transmitted anywhere else. You can also add it manually: open <code style="background:#e2e8f0;padding:1px 5px;border-radius:4px">.env</code> in the playground directory and add <code style="background:#e2e8f0;padding:1px 5px;border-radius:4px">ANTHROPIC_API_KEY=your-key-here</code>
       </p>
@@ -135,9 +135,9 @@
     <!-- Step 7: Done -->
     <div class="step" id="step-7">
       <h1>All set! 🎉</h1>
-      <p class="subtitle">The guardian is starting up. Your kid can now chat with it on Telegram. Open the game lobby URL on their tablet to play games.</p>
+      <p class="subtitle">The guardian is starting up. Your kid can now chat with it on Telegram. Open the creation lobby URL on their tablet to play and explore.</p>
       <div class="card" style="margin-bottom:20px">
-        <div class="stat-label">Game Lobby URL (share with kid's tablet)</div>
+        <div class="stat-label">Creation Lobby URL (share with kid's tablet)</div>
         <div id="lobby-url" style="font-size:15px;font-weight:600;color:#6366f1;margin-top:6px;font-family:ui-monospace,monospace"></div>
       </div>
       <div class="wizard-actions">
