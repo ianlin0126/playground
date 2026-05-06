@@ -85,7 +85,7 @@ export function buildStaticLobbyHtml(games: { name: string; slug: string }[]): s
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Game Zone 🎮</title>
+  <title>Creation Zone ✨</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -115,22 +115,22 @@ export function buildStaticLobbyHtml(games: { name: string; slug: string }[]): s
   </style>
 </head>
 <body>
-  <h1>Game Zone 🎮</h1>
-  <p class="subtitle">Pick a game and have fun!</p>
+  <h1>Creation Zone ✨</h1>
+  <p class="subtitle">Pick a creation and have fun!</p>
   <div class="games" id="games-container"></div>
-  <footer>More games coming soon!</footer>
+  <footer>More creations coming soon!</footer>
   <script>
     var EMOJIS = ['🃏', '🎲', '🧩', '🎯', '🕹️', '🎮', '🏆', '⭐'];
     var games = ${gamesJson};
     var container = document.getElementById('games-container');
     if (games.length === 0) {
-      container.innerHTML = '<p style="color:#fff;font-size:1.2rem;">No games yet — come back soon! 🎮</p>';
+      container.innerHTML = '<p style="color:#fff;font-size:1.2rem;">No creations yet — come back soon! ✨</p>';
     } else {
       games.forEach(function(game, i) {
         var a = document.createElement('a');
         a.className = 'game-card';
         a.href = 'games/' + game.slug + '/';
-        a.setAttribute('aria-label', 'Play ' + game.name);
+        a.setAttribute('aria-label', 'Open ' + game.name);
         var emojiSpan = document.createElement('span');
         emojiSpan.className = 'emoji';
         emojiSpan.textContent = EMOJIS[i % EMOJIS.length];
