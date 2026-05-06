@@ -21,14 +21,14 @@ A frog jumps from log to log across a pond. (_kid_)
 ## Goal
 Jump as many logs as you can without falling in. (_inferred_)
 
-## Controls
+## Interactions
 - tap to jump (_kid_)
 
-## Game elements
-- **Player:** a green frog (_kid_)
-- **Obstacles / enemies:** logs that drift apart (_inferred_)
-- **Collectibles / power-ups:** not specified yet (_inferred_)
-- **Levels / progression:** logs drift faster over time (_inferred_)
+## Elements
+- **Main character / player:** a green frog (_kid_)
+- **Obstacles or challenges:** logs that drift apart (_inferred_)
+- **Collectibles, surprises, or rewards:** not specified yet (_inferred_)
+- **Progression:** logs drift faster over time (_inferred_)
 
 ## Look & feel
 - **Theme / setting:** pond at sunset (_inferred_)
@@ -216,7 +216,7 @@ describe("synthesizeSpec — lazy backfill (no prior spec, has existing index.ht
       {
         callApi: async (_, userMessage) => {
           captured = userMessage;
-          return `# Maze Runner 🌀\n\n## Concept\nA player moves through a maze (_inferred-from-code_).\n\n## Goal\nReach the end (_inferred-from-code_).\n\n## Controls\n- arrow keys (_inferred-from-code_)\n\n## Game elements\n- **Player:** a runner (_inferred-from-code_)\n\n## Look & feel\n- **Theme / setting:** maze (_inferred-from-code_)\n\n## Change log\n- **2026-05-02** — spec backfilled from existing game; added a sparkly finish line\n`;
+          return `# Maze Runner 🌀\n\n## Concept\nA player moves through a maze (_inferred-from-code_).\n\n## Goal\nReach the end (_inferred-from-code_).\n\n## Interactions\n- arrow keys (_inferred-from-code_)\n\n## Elements\n- **Main character / player:** a runner (_inferred-from-code_)\n\n## Look & feel\n- **Theme / setting:** maze (_inferred-from-code_)\n\n## Change log\n- **2026-05-02** — spec backfilled from existing game; added a sparkly finish line\n`;
         },
       }
     );
@@ -239,7 +239,7 @@ describe("synthesizeSpec — lazy backfill (no prior spec, has existing index.ht
       {
         callApi: async (_, userMessage) => {
           captured = userMessage;
-          return `# Brand New Game\n\n## Concept\nx (_inferred_)\n\n## Goal\ny (_inferred_)\n\n## Controls\n- tap (_inferred_)\n\n## Game elements\n- **Player:** z (_inferred_)\n\n## Look & feel\n- **Theme / setting:** space (_inferred_)\n\n## Change log\n- **2026-05-02** — initial build\n`;
+          return `# Brand New Game\n\n## Concept\nx (_inferred_)\n\n## Goal\ny (_inferred_)\n\n## Interactions\n- tap (_inferred_)\n\n## Elements\n- **Main character / player:** z (_inferred_)\n\n## Look & feel\n- **Theme / setting:** space (_inferred_)\n\n## Change log\n- **2026-05-02** — initial build\n`;
         },
       }
     );
@@ -266,11 +266,11 @@ foo (_inferred_)
 ## Goal
 bar (_inferred_)
 
-## Controls
+## Interactions
 - tap (_inferred_)
 
-## Game elements
-- **Player:** y (_inferred_)
+## Elements
+- **Main character / player:** y (_inferred_)
 
 ## Look & feel
 - **Theme / setting:** z (_inferred_)
@@ -326,7 +326,7 @@ bar (_inferred_)
         attempts++;
         if (attempts === 1) {
           // Missing ## Change log
-          return `# X\n## Concept\nfoo (_inferred_)\n## Goal\nbar (_inferred_)\n## Controls\n- tap (_inferred_)\n## Game elements\n- **Player:** y (_inferred_)\n## Look & feel\n- **Theme / setting:** z (_inferred_)\n`;
+          return `# X\n## Concept\nfoo (_inferred_)\n## Goal\nbar (_inferred_)\n## Interactions\n- tap (_inferred_)\n## Elements\n- **Main character / player:** y (_inferred_)\n## Look & feel\n- **Theme / setting:** z (_inferred_)\n`;
         }
         return specWithAllSections();
       },

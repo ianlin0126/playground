@@ -28,8 +28,8 @@ export class SynthesizerError extends Error {
 const REQUIRED_SECTIONS = [
   "## Concept",
   "## Goal",
-  "## Controls",
-  "## Game elements",
+  "## Interactions",
+  "## Elements",
   "## Look & feel",
   "## Change log",
 ];
@@ -141,7 +141,7 @@ export function buildFallbackSpec(args: {
     ?.content ?? "no kid message captured";
   const safeKid = lastKidMsg.replace(/\n+/g, " ").slice(0, 200);
   const verb = args.isRevision ? "update" : "build";
-  return `# ${args.gameName} 🎮
+  return `# ${args.gameName} ✨
 
 ## Concept
 ${safeKid} (_kid_)
@@ -149,14 +149,14 @@ ${safeKid} (_kid_)
 ## Goal
 not specified yet (_inferred_)
 
-## Controls
+## Interactions
 - not specified yet (_inferred_)
 
-## Game elements
-- **Player:** not specified yet (_inferred_)
-- **Obstacles / enemies:** not specified yet (_inferred_)
-- **Collectibles / power-ups:** not specified yet (_inferred_)
-- **Levels / progression:** not specified yet (_inferred_)
+## Elements
+- **Main character / player:** not specified yet (_inferred_)
+- **Obstacles or challenges:** not specified yet (_inferred_)
+- **Collectibles, surprises, or rewards:** not specified yet (_inferred_)
+- **Progression:** not specified yet (_inferred_)
 
 ## Look & feel
 - **Theme / setting:** not specified yet (_inferred_)
