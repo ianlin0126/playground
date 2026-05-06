@@ -257,7 +257,7 @@ describe("BUILD_HALLUCINATION_RE", () => {
   });
 
   it("does NOT match question phrasings used to invite a build", () => {
-    expect(BUILD_HALLUCINATION_RE.test("Should I make it now? 🎮")).toBe(false);
+    expect(BUILD_HALLUCINATION_RE.test("Should I make it now? ✨")).toBe(false);
     expect(BUILD_HALLUCINATION_RE.test("Want me to build a maze game?")).toBe(false);
   });
 
@@ -276,7 +276,7 @@ describe("BUILD_HALLUCINATION_RE", () => {
 
 describe("BUILD_CONFIRMATION_QUESTION_RE", () => {
   it("matches the canonical confirmation phrasings", () => {
-    expect(BUILD_CONFIRMATION_QUESTION_RE.test("Should I make it now? 🎮")).toBe(true);
+    expect(BUILD_CONFIRMATION_QUESTION_RE.test("Should I make it now? ✨")).toBe(true);
     expect(BUILD_CONFIRMATION_QUESTION_RE.test("Should I build it now?!")).toBe(true);
     expect(BUILD_CONFIRMATION_QUESTION_RE.test("Should I update it now?")).toBe(true);
     expect(BUILD_CONFIRMATION_QUESTION_RE.test("Should I do it now?")).toBe(true);
@@ -320,7 +320,7 @@ describe("HALLUCINATED_GAME_URL_RE", () => {
   });
 
   it("does NOT match plain prose (no URL) or non-games URLs", () => {
-    expect(HALLUCINATED_GAME_URL_RE.test("Should I make it now? 🎮")).toBe(false);
+    expect(HALLUCINATED_GAME_URL_RE.test("Should I make it now? ✨")).toBe(false);
     expect(HALLUCINATED_GAME_URL_RE.test("Here's the plan!! Then we'll make it!")).toBe(false);
     expect(HALLUCINATED_GAME_URL_RE.test("Check out https://example.com/about for info.")).toBe(false);
   });
@@ -429,8 +429,8 @@ describe("logRawReply", () => {
       initialReply: "Working on it!",
       initialHasToken: false,
       halluFired: true,
-      correctedReply: "CREATION_NAME: Star Game\nShould I make it now? 🎮",
-      finalReply: "CREATION_NAME: Star Game\nShould I make it now? 🎮",
+      correctedReply: "CREATION_NAME: Star Game\nShould I make it now? ✨",
+      finalReply: "CREATION_NAME: Star Game\nShould I make it now? ✨",
       tokenMatch: { gameName: "Star Game" },
       pendingBuildAfter: { gameName: "Star Game", revisionRequest: "make me a game" },
     });

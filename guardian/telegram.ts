@@ -511,7 +511,7 @@ async function handleMessage(
       messages: [
         ...messagesForApi,
         { role: "assistant" as const, content: reply },
-        { role: "user" as const, content: "[System: Your response implied a build is in progress but no CREATION_NAME: token was included, so nothing will actually be built. Please send a corrected response: either include the CREATION_NAME: token if you are ready to build and ask 'Should I make it now? 🎮', or reply without any build-in-progress language.]" },
+        { role: "user" as const, content: "[System: Your response implied a build is in progress but no CREATION_NAME: token was included, so nothing will actually be built. Please send a corrected response: either include the CREATION_NAME: token if you are ready to build and ask 'Should I make it now? ✨', or reply without any build-in-progress language.]" },
       ],
     });
     if (corrected.content.length && corrected.content[0].type === "text") {
@@ -537,7 +537,7 @@ async function handleMessage(
       messages: [
         ...messagesForApi,
         { role: "assistant" as const, content: reply },
-        { role: "user" as const, content: "[System: Your reply contained a fabricated game URL. Only the server can produce a real URL after the build completes. Please send a corrected response: keep the CREATION_NAME: token and ask 'Should I make it now? 🎮' (or 'Should I do it now? 🎮' for updates), but remove any URL, 'Here it is', 'Open this on your tablet', or 'Ok let me make it' content. The kid hasn't confirmed yet — just ask.]" },
+        { role: "user" as const, content: "[System: Your reply contained a fabricated game URL. Only the server can produce a real URL after the build completes. Please send a corrected response: keep the CREATION_NAME: token and ask 'Should I make it now? ✨' (or 'Should I do it now? ✨' for updates), but remove any URL, 'Here it is', 'Open this on your tablet', or 'Ok let me make it' content. The kid hasn't confirmed yet — just ask.]" },
       ],
     });
     if (corrected.content.length && corrected.content[0].type === "text") {
