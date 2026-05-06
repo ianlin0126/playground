@@ -5,7 +5,7 @@ This file provides guidance for AI assistants (Claude and others) working with t
 ## Repository Overview
 
 **Repository:** `ianlin0126/playground`
-**Purpose:** A generic platform for parents to build kid-friendly games with their children. The platform code is intentionally free of any specific games or personal artwork — those live in a separate companion repo.
+**Purpose:** A generic platform for parents to build kid-friendly creations with their children — games, interactive stories, fun learning activities, or anything else playful and web-based. The platform code is intentionally free of any specific creations or personal artwork — those live in a separate companion repo.
 
 ### Audience
 
@@ -23,7 +23,7 @@ The platform is split across two independent git repos that share the same on-di
 | Repo | Purpose | What lives here |
 |---|---|---|
 | `ianlin0126/playground` (this repo) | Generic platform code, shareable as-is | `guardian/`, `dashboard/`, `tools/`, `CLAUDE.md`, `README.md`, `BACKLOG.md`, `package.json`, `bun.lock`, `.env.example`, `.gitignore` |
-| `ianlin0126/playground-games` | A user's selected games + per-game custom assets/specs/plans | `games/<slug>/index.html`, `games/<slug>/assets/`, `games/<slug>/design.md`, `games/<slug>/plan.md`, `games/<slug>/sprite-map.json`, `games/manifest.json`, `games/published.json` |
+| `ianlin0126/playground-games` | A user's selected creations + per-creation custom assets/specs/plans | `games/<slug>/index.html`, `games/<slug>/assets/`, `games/<slug>/design.md`, `games/<slug>/plan.md`, `games/<slug>/sprite-map.json`, `games/manifest.json`, `games/published.json` |
 
 ### How the two repos coexist locally
 
@@ -32,14 +32,14 @@ The platform is split across two independent git repos that share the same on-di
 - The platform's `.gitignore` excludes `games/` so git treats them as completely separate. There is no submodule, no symlink — just two repos that happen to share a directory tree.
 - Run `git status` from `playground/` to see platform changes; `cd games && git status` to see games changes.
 
-### Per-game folder convention
+### Per-creation folder convention
 
-Each game owns everything it needs in `games/<slug>/`:
+Each creation owns everything it needs in `games/<slug>/`:
 
 ```
 games/space-shooter/
-├── index.html                  # the playable game
-├── assets/                     # game-specific images / sprites / atlases
+├── index.html                  # the playable creation
+├── assets/                     # creation-specific images / sprites / atlases
 │   └── space-shooter-atlas.png
 ├── sprite-map.json             # build artifact (sprite coordinates)
 ├── design.md                   # design spec (history, decisions)
@@ -47,7 +47,7 @@ games/space-shooter/
 └── source-sheet.png            # original source art (kept private; not deployed)
 ```
 
-In the game's `index.html`, asset references use **relative paths inside the game folder**:
+In the creation's `index.html`, asset references use **relative paths inside the creation folder**:
 
 ```js
 ATLAS.src = './assets/space-shooter-atlas.png';
@@ -64,19 +64,19 @@ NOT `'../../assets/...'` — that pattern was removed when the global `assets/` 
 | Tests for platform code | platform |
 | Documentation about the platform | platform |
 | Guardian bug tracker (`BACKLOG.md`) | platform |
-| Specific games | games |
-| Custom artwork for specific games | games |
-| Specs and plans for specific games | games |
-| Sprite-map JSON for specific games | games |
+| Specific creations | games |
+| Custom artwork for specific creations | games |
+| Specs and plans for specific creations | games |
+| Sprite-map JSON for specific creations | games |
 | `games/manifest.json` (catalog) | games |
 | `games/published.json` (gh-pages state) | games |
 | Kid's experimental builds via the guardian | games (untracked in working tree until committed) |
 
 ### Publisher → GitHub Pages flow
 
-`guardian/publisher.ts`'s `publishToGitHubPages()` walks `games/<slug>/` for each published slug and uploads everything (index.html + per-game assets + any other files in the folder) to the `gh-pages` branch of the `GITHUB_REPO` configured in `.env`. With `GITHUB_REPO=ianlin0126/playground-games`, published games are served at `https://ianlin0126.github.io/playground-games/games/<slug>/`.
+`guardian/publisher.ts`'s `publishToGitHubPages()` walks `games/<slug>/` for each published slug and uploads everything (index.html + per-creation assets + any other files in the folder) to the `gh-pages` branch of the `GITHUB_REPO` configured in `.env`. With `GITHUB_REPO=ianlin0126/playground-games`, published creations are served at `https://ianlin0126.github.io/playground-games/games/<slug>/`.
 
-There is no longer a global `assets/` dir at the platform-repo root — assets always live under their owning game's folder.
+There is no longer a global `assets/` dir at the platform-repo root — assets always live under their owning creation's folder.
 
 ---
 
@@ -89,17 +89,17 @@ The Guardian Agent is a Bun/TypeScript process that lets your child interact wit
 **What it does:**
 - Listens to a dedicated kid Telegram bot (separate from the parent bot)
 - Holds a kid-friendly conversation powered by Claude (`claude-sonnet-4-6`)
-- Builds HTML games via the Claude API and writes them to `games/<slug>/index.html`
+- Builds HTML creations via the Claude API and writes them to `games/<slug>/index.html`
 - Serves the entire `playground/` directory on `http://<lan-ip>:3000/`
-- Sends the game URL back to Telegram so the kid can open it on a tablet (same WiFi)
+- Sends the URL back to Telegram so the kid can open it on a tablet (same WiFi)
 - Logs all conversation turns to `.guardian/conversations.db` (SQLite, gitignored)
 
 **Files:**
 - `guardian/guardian.ts` — main entry point (HTTP server + Telegram poller + conversation loop)
 - `guardian/config.ts` — env loading, LAN IP detection
 - `guardian/db.ts` — SQLite conversation log
-- `guardian/prompts.ts` — system prompts for guardian personality and game builder
-- `guardian/builder.ts` — Claude API game generation + manifest update
+- `guardian/prompts.ts` — system prompts for guardian personality and creation builder
+- `guardian/builder.ts` — Claude API creation generation + manifest update
 
 **Configuration (`.env`, gitignored):**
 ```
@@ -109,7 +109,7 @@ KID_TELEGRAM_ID=     # kid's numeric Telegram user ID
 ANTHROPIC_API_KEY=   # Anthropic API key
 ```
 
-**Game lobby:** `games/manifest.json` lists all built games; `index.html` fetches it dynamically. Add new entries by having the guardian build a game, or manually append to the JSON.
+**Creation lobby:** `games/manifest.json` lists all built creations; `index.html` fetches it dynamically. Add new entries by having the guardian build a creation, or manually append to the JSON.
 
 **Parent monitoring:** The parent queries `.guardian/conversations.db` directly from their Claude Code session — `flagged=1` rows indicate messages that triggered alarm phrases.
 
@@ -158,9 +158,9 @@ ANTHROPIC_API_KEY=   # Anthropic API key
 ```
 playground/
   guardian/          # Guardian Agent source (Bun/TypeScript)
-  games/             # Built games; manifest.json lists all entries
+  games/             # Built creations; manifest.json lists all entries
   .guardian/         # Runtime data (SQLite db — gitignored)
-  index.html         # Game Zone lobby (loads games from manifest.json)
+  index.html         # Creation Zone lobby (loads creations from manifest.json)
   package.json       # "guardian" script: bun run guardian/guardian.ts
   .env.example       # Config template
   CLAUDE.md          # This file
@@ -266,9 +266,9 @@ All features, copy, and assets must be appropriate for children ~8 years old.
 
 ## Guardian Build Queue
 
-When the child requests a game via Telegram, the guardian writes a job to `.guardian/jobs/<id>.json`.
+When the child requests a creation via Telegram, the guardian writes a job to `.guardian/jobs/<id>.json`.
 
-**Claude Code is required for game builds.** The guardian queues a job file and waits for a Claude Code session to pick it up. If no session picks up the job within 90 seconds, the guardian tells the kid to ask a grown-up to open Claude Code.
+**Claude Code is required for creation builds.** The guardian queues a job file and waits for a Claude Code session to pick it up. If no session picks up the job within 90 seconds, the guardian tells the kid to ask a grown-up to open Claude Code.
 
 ### Claude Code session monitor (required)
 
