@@ -254,7 +254,7 @@ async function compressOldTurns(anthropic: Anthropic): Promise<void> {
         messages: [
           {
             role: "user",
-            content: `Summarize this conversation between a child (${config.kidName}, age 7-8) and a game-building assistant in 3-5 sentences. Focus on: games discussed or built, the child's preferences and interests, any recurring themes or requests, and the overall relationship tone. Be warm and specific.\n\n${transcript}`,
+            content: `Summarize this conversation between a child (${config.kidName}, age 7-8) and a creation-studio assistant in 3-5 sentences. Focus on: creations discussed or built, the child's preferences and interests, any recurring themes or requests, and the overall relationship tone. Be warm and specific.\n\n${transcript}`,
           },
         ],
       });
