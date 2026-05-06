@@ -493,9 +493,9 @@ async function handleMessage(
   let reply = initialReply;
 
   // Safety net: if Claude used build-in-progress language OR a confirmation
-  // question ("Should I make it now?") without including a GAME_NAME: token,
+  // question ("Should I make it now?") without including a CREATION_NAME: token,
   // it's a forgotten-token case — re-prompt once to get a corrected response.
-  const nameMatch = () => reply.match(/^GAME_NAME:\s*(.+)$/m);
+  const nameMatch = () => reply.match(/^CREATION_NAME:\s*(.+)$/m);
   const BUILD_HALLUCINATION_RE = /\b(right now|working on it|on it[!,. ]|give me a sec|i'?m (building|making|updating|creating)|building it|making it|updating it)\b/i;
   const BUILD_CONFIRMATION_QUESTION_RE = /\bshould i\b.{0,80}\b(make|build|update|create|do)\b.{0,80}\bnow\b/i;
   const initialHasToken = !!nameMatch();
@@ -511,7 +511,7 @@ async function handleMessage(
       messages: [
         ...messagesForApi,
         { role: "assistant" as const, content: reply },
-        { role: "user" as const, content: "[System: Your response implied a build is in progress but no GAME_NAME: token was included, so nothing will actually be built. Please send a corrected response: either include the GAME_NAME: token if you are ready to build and ask 'Should I make it now? 🎮', or reply without any build-in-progress language.]" },
+        { role: "user" as const, content: "[System: Your response implied a build is in progress but no CREATION_NAME: token was included, so nothing will actually be built. Please send a corrected response: either include the CREATION_NAME: token if you are ready to build and ask 'Should I make it now? 🎮', or reply without any build-in-progress language.]" },
       ],
     });
     if (corrected.content.length && corrected.content[0].type === "text") {
@@ -520,7 +520,7 @@ async function handleMessage(
     }
   }
 
-  // Second safety net: if the reply has BOTH a GAME_NAME: token AND a /games/<slug>/
+  // Second safety net: if the reply has BOTH a CREATION_NAME: token AND a /games/<slug>/
   // URL inside the same message, the LLM has hallucinated the build-completion
   // step. The real flow only emits a URL after buildGame returns, in a separate
   // sendMessage call — never in the same reply as the token. Re-prompt to get a
@@ -537,7 +537,7 @@ async function handleMessage(
       messages: [
         ...messagesForApi,
         { role: "assistant" as const, content: reply },
-        { role: "user" as const, content: "[System: Your reply contained a fabricated game URL. Only the server can produce a real URL after the build completes. Please send a corrected response: keep the GAME_NAME: token and ask 'Should I make it now? 🎮' (or 'Should I do it now? 🎮' for updates), but remove any URL, 'Here it is', 'Open this on your tablet', or 'Ok let me make it' content. The kid hasn't confirmed yet — just ask.]" },
+        { role: "user" as const, content: "[System: Your reply contained a fabricated game URL. Only the server can produce a real URL after the build completes. Please send a corrected response: keep the CREATION_NAME: token and ask 'Should I make it now? 🎮' (or 'Should I do it now? 🎮' for updates), but remove any URL, 'Here it is', 'Open this on your tablet', or 'Ok let me make it' content. The kid hasn't confirmed yet — just ask.]" },
       ],
     });
     if (corrected.content.length && corrected.content[0].type === "text") {
@@ -546,7 +546,7 @@ async function handleMessage(
   }
 
   const tokenMatch = nameMatch();
-  const idMatch = reply.match(/^GAME_ID:\s*(.+)$/m);
+  const idMatch = reply.match(/^CREATION_ID:\s*(.+)$/m);
   if (tokenMatch) {
     setPendingBuild({
       gameName: tokenMatch[1].trim(),
@@ -570,8 +570,8 @@ async function handleMessage(
   });
 
   const cleanReply = reply
-    .replace(/^GAME_ID:\s*.+\n?/m, "")
-    .replace(/^GAME_NAME:\s*.+\n?/m, "")
+    .replace(/^CREATION_ID:\s*.+\n?/m, "")
+    .replace(/^CREATION_NAME:\s*.+\n?/m, "")
     .trim();
   conversationHistory.push({ role: "assistant", content: cleanReply });
   insertTurn("guardian", cleanReply);

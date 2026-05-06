@@ -397,11 +397,11 @@ describe("logRawReply", () => {
     });
     logRawReply(testDir, {
       kidMessage: "Build it",
-      initialReply: "GAME_NAME: Maze\nLet me build that!",
+      initialReply: "CREATION_NAME: Maze\nLet me build that!",
       initialHasToken: true,
       halluFired: false,
       correctedReply: null,
-      finalReply: "GAME_NAME: Maze\nLet me build that!",
+      finalReply: "CREATION_NAME: Maze\nLet me build that!",
       tokenMatch: { gameName: "Maze" },
       pendingBuildAfter: { gameName: "Maze" },
     });
@@ -429,19 +429,19 @@ describe("logRawReply", () => {
       initialReply: "Working on it!",
       initialHasToken: false,
       halluFired: true,
-      correctedReply: "GAME_NAME: Star Game\nShould I make it now? 🎮",
-      finalReply: "GAME_NAME: Star Game\nShould I make it now? 🎮",
+      correctedReply: "CREATION_NAME: Star Game\nShould I make it now? 🎮",
+      finalReply: "CREATION_NAME: Star Game\nShould I make it now? 🎮",
       tokenMatch: { gameName: "Star Game" },
       pendingBuildAfter: { gameName: "Star Game", revisionRequest: "make me a game" },
     });
     // (c) First reply had a token already; guard never fired
     logRawReply(testDir, {
       kidMessage: "build a maze",
-      initialReply: "GAME_NAME: Maze\nLooks great!",
+      initialReply: "CREATION_NAME: Maze\nLooks great!",
       initialHasToken: true,
       halluFired: false,
       correctedReply: null,
-      finalReply: "GAME_NAME: Maze\nLooks great!",
+      finalReply: "CREATION_NAME: Maze\nLooks great!",
       tokenMatch: { gameName: "Maze" },
       pendingBuildAfter: { gameName: "Maze" },
     });
