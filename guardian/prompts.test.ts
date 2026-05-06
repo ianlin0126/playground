@@ -11,7 +11,7 @@ import {
   getDefaultGuardianSystemPrompt,
   getWorkerSystemPrompt,
   getPmSynthesizerSystemPrompt,
-  STARTER_GAMES,
+  STARTER_CREATIONS,
 } from "./prompts";
 
 let testDir: string;
@@ -68,14 +68,21 @@ describe("getGuardianSystemPrompt", () => {
     expect(prompt).toContain("Clive");
   });
 
-  it("includes the starter games list", () => {
+  it("includes the starter creations list", () => {
     const prompt = getGuardianSystemPrompt("Clive");
-    for (const game of STARTER_GAMES) {
-      expect(prompt).toContain(game.name);
+    for (const item of STARTER_CREATIONS) {
+      expect(prompt).toContain(item.name);
     }
   });
 
-  it("lists existing games when provided", () => {
+  it("offers a mix of creation types (game, story, learning)", () => {
+    const prompt = getGuardianSystemPrompt("Clive");
+    expect(prompt).toMatch(/game/i);
+    expect(prompt).toMatch(/stor/i);
+    expect(prompt).toMatch(/learn/i);
+  });
+
+  it("lists existing creations when provided", () => {
     const prompt = getGuardianSystemPrompt("Clive", [
       { id: "abc123", name: "Star Game" },
       { id: "def456", name: "Maze Game" },
@@ -84,9 +91,9 @@ describe("getGuardianSystemPrompt", () => {
     expect(prompt).toContain("[def456] Maze Game");
   });
 
-  it("omits the existing-games block when list is empty", () => {
+  it("omits the existing-creations block when list is empty", () => {
     const prompt = getGuardianSystemPrompt("Clive");
-    expect(prompt).not.toContain("existing games");
+    expect(prompt).not.toContain("existing creations");
   });
 });
 
@@ -195,8 +202,8 @@ describe("getGuardianSystemPrompt — slimmed for PM synthesizer", () => {
     expect(p).toMatch(/should i make it now/i);
   });
 
-  it("still tells the guardian to confirm and use GAME_NAME tokens", () => {
+  it("still tells the guardian to confirm and use CREATION_NAME tokens", () => {
     const p = getGuardianSystemPrompt("Clive");
-    expect(p).toContain("GAME_NAME:");
+    expect(p).toContain("CREATION_NAME:");
   });
 });
