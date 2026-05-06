@@ -65,7 +65,7 @@ function buildUserMessage(args: SynthesizeArgs): string {
     parts.push(args.priorSpec);
   } else if (args.existingIndexHtml) {
     parts.push("");
-    parts.push("LAZY BACKFILL — no prior spec exists. Reverse-engineer Concept/Goal/Controls/Game elements/Look & feel from the existing index.html below. Mark every line you derived from the code with (_inferred-from-code_). The first change-log entry must say 'spec backfilled from existing game'.");
+    parts.push("LAZY BACKFILL — no prior spec exists. Reverse-engineer Concept/Goal/Interactions/Elements/Look & feel from the existing index.html below. Mark every line you derived from the code with (_inferred-from-code_). The first change-log entry must say 'spec backfilled from existing creation'.");
     parts.push("EXISTING INDEX.HTML:");
     parts.push(args.existingIndexHtml);
   }

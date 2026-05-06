@@ -221,6 +221,7 @@ describe("synthesizeSpec — lazy backfill (no prior spec, has existing index.ht
       }
     );
     expect(captured).toContain("LAZY BACKFILL");
+    expect(captured).toContain("Concept/Goal/Interactions/Elements/Look & feel");
     expect(captured).toContain("EXISTING INDEX.HTML");
     expect(captured).toContain("player moves with arrow keys");
     expect(captured).toContain("inferred-from-code");
