@@ -104,7 +104,7 @@ function buildPrompt(
 - Positive-only feedback — never say "Wrong", "Failed", "Game Over", "Loser"
 - Must work on iOS Safari (no experimental APIs)
 - No violence, no scary content, no external links, no data collection
-- Immediately playable — jump straight into the game, no instructions screen needed`;
+- Immediately interactive — jump straight in, no instructions screen needed`;
 
   const verifySteps = `After writing the file, verify it works:
 1. Fetch http://localhost:${port}/games/${slug}/ and confirm you get HTML back
@@ -113,10 +113,10 @@ function buildPrompt(
    b. Any onclick="foo()" attributes — confirm foo is declared at TOP-LEVEL scope, not inside an IIFE or nested function. If not, fix it: either move functions to top-level or replace onclick with addEventListener inside the closure.
    c. No undeclared function references in inline event handlers
 3. If anything looks wrong, fix it and verify again
-4. Keep iterating until the game is solid and fun
+4. Keep iterating until the creation is solid and fun
 
-When you are satisfied the game works, output exactly this line as your final output:
-GAME_READY: games/${slug}/index.html`;
+When you are satisfied the creation works, output exactly this line as your final output:
+CREATION_READY: games/${slug}/index.html`;
 
   const specBlock = `SPEC:
 ${specContent}`;
@@ -128,7 +128,7 @@ ${existingHtml}`
 
   const action = isRevision
     ? `Apply the change to games/${slug}/index.html so it matches the SPEC.`
-    : `Write the complete game to games/${slug}/index.html so it matches the SPEC.`;
+    : `Write the complete creation to games/${slug}/index.html so it matches the SPEC.`;
 
   return [
     specBlock,

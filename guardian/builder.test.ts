@@ -236,14 +236,14 @@ describe("buildPrompt with SPEC", () => {
     expect(prompt).not.toMatch(/Recent conversation/i);
   });
 
-  it("includes the verification checklist and GAME_READY marker", () => {
+  it("includes the verification checklist and CREATION_READY marker", () => {
     const prompt = buildPromptForTest({
       slug: "star-catcher",
       isRevision: false,
       specContent: sampleSpec,
       port: 3000,
     });
-    expect(prompt).toContain("GAME_READY: games/star-catcher/index.html");
+    expect(prompt).toContain("CREATION_READY: games/star-catcher/index.html");
     expect(prompt).toMatch(/onclick/);  // verification step still mentions IIFE/onclick check
   });
 });

@@ -113,9 +113,9 @@ describe("getWorkerSystemPrompt", () => {
     expect(prompt).toContain("3000");
   });
 
-  it("ends with a GAME_READY marker spec", () => {
+  it("ends with a CREATION_READY marker spec", () => {
     const prompt = getWorkerSystemPrompt("/tmp/x", 3000);
-    expect(prompt).toContain("GAME_READY: games/<slug>/index.html");
+    expect(prompt).toContain("CREATION_READY: games/<slug>/index.html");
   });
 
   it("treats the embedded SPEC as the source of truth", () => {
