@@ -134,7 +134,14 @@ export function buildFallbackSpec(args: {
   today: string;
   conversationTurns: ConversationTurn[];
   isRevision: boolean;
+  priorSpec?: string;
 }): string {
+  // Revision with prior spec — preserve everything, append a change-log entry
+  if (args.priorSpec && args.isRevision) {
+    const note = `- **${args.today}** — synthesizer failed; please retry with a more specific request`;
+    const trimmed = args.priorSpec.replace(/\s+$/, "");
+    return trimmed + "\n" + note + "\n";
+  }
   const lastKidMsg = [...args.conversationTurns]
     .reverse()
     .find((t) => t.role === "user")

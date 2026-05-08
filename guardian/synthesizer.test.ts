@@ -384,3 +384,57 @@ describe("buildFallbackSpec", () => {
     expect(s).toContain("synthesizer failed");
   });
 });
+
+describe("buildFallbackSpec — revision with prior spec preserves it", () => {
+  it("appends a change-log retry note to the prior spec", () => {
+    const priorSpec = `# Red Ball ✨
+
+## Concept
+A rolling and jumping platformer (_kid_)
+
+## Goal
+Roll and jump through levels (_kid_)
+
+## Interactions
+- Move left / right (_inferred_)
+
+## Elements
+- **Main character / player:** A red ball (_kid_)
+
+## Look & feel
+- **Theme / setting:** Classic Red Ball platformer (_kid_)
+
+## Change log
+- **2026-05-04** — initial spec
+- **2026-05-05** — bug-fix revision
+`;
+    const result = buildFallbackSpec({
+      gameName: "Red Ball",
+      today: "2026-05-08",
+      conversationTurns: [{ role: "user", content: "Yesssssss" }],
+      isRevision: true,
+      priorSpec,
+    });
+    // Original content preserved verbatim
+    expect(result).toContain("A rolling and jumping platformer (_kid_)");
+    expect(result).toContain("- **2026-05-04** — initial spec");
+    expect(result).toContain("- **2026-05-05** — bug-fix revision");
+    // New retry note appended
+    expect(result).toContain("- **2026-05-08** — synthesizer failed; please retry");
+    // Still passes validateSpec
+    expect(validateSpec(result)).toEqual({ ok: true });
+  });
+
+  it("falls back to fresh stub when isRevision is true but no priorSpec", () => {
+    const result = buildFallbackSpec({
+      gameName: "New Game",
+      today: "2026-05-08",
+      conversationTurns: [{ role: "user", content: "I want a maze game" }],
+      isRevision: true,
+      // priorSpec absent
+    });
+    expect(result).toContain("# New Game ✨");
+    expect(result).toContain("I want a maze game (_kid_)");
+    expect(result).toContain("synthesizer failed; update from raw kid message");
+  });
+});

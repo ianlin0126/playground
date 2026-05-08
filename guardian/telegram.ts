@@ -327,7 +327,7 @@ async function callPmSynthesizerApi(
 ): Promise<string> {
   const r = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 2048,
+    max_tokens: 8192,
     system,
     messages: [{ role: "user", content: userMessage }],
   });
@@ -404,6 +404,7 @@ async function handleMessage(
               today: todayLocal(),
               conversationTurns: recentContext,
               isRevision,
+              priorSpec,
             });
           } else {
             throw e;  // unexpected error — let the outer catch handle it
