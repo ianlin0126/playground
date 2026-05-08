@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<!--
+  Interactive-story scaffold. Fill in:
+    1. <title>          — the story's title
+    2. #title-overlay h1 — same title, displayed on the splash card
+    3. SCENES = [ ... ]  — one entry per scene (see schema below)
+    4. assets/<slug>-bg.png and assets/<slug>-<hotspot>.png for every scene/hotspot
+
+  Scene schema (one object per scene in the SCENES array):
+    {
+      id: 1,                                   // 1-based; the renderer uses this (not `bg`) to compute element-PNG paths
+      bg: 'assets/scene-1-bg.png',             // 2:3 portrait or 3:2 landscape painted background
+      alt: 'Description of the painted scene', // accessibility
+      text: 'Narrator paragraph for this page.',
+      hotspots: [
+        // 3-5 hotspots per scene; each is a transparent PNG positioned over the background.
+        { slug: 'rocket', x: 0.05, y: 0.05, w: 0.13, ambient: 'flutter', tap: 'rocket-fly' },
+      ],
+    }
+
+  Note: `id` (NOT the path in `bg`) is what the renderer uses to build element
+  filenames — see assets/scene-${scene.id}-${h.slug}.png in renderScene below.
+  If you set id: 1 but bg: 'assets/foo.png', elements still load from scene-1-*.png.
+
+  Hotspot fields:
+    slug    — used for element filename (assets/scene-<id>-<slug>.png) AND aria-label
+    x, y, w — fractional coordinates [0,1] of the scene-frame; w sets size, height auto from image
+    ambient — a class name from "ambient-*" below; the loop runs forever in the background
+    tap     — a class name from the tap animations below; runs once on tap, then settles back
+              (re-using the same tap class on multiple hotspots in one scene is fine — pick
+              variety where you can but don't invent new keyframes just to avoid duplication)
+    opacity — optional [0,1]; useful when the element is light/glow over a darker background
+    blend   — optional ('screen', 'multiply', etc.); 'screen' is great for glows/particles
+
+  Add new ambient or tap animations by appending @keyframes + a class below.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>STORY TITLE</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      background: #2b2018;
+      font-family: 'Georgia', 'Iowan Old Style', serif;
+      color: #2b2018;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: pan-y;
+    }
+    /* 2:3 portrait letterbox — mobile-first, social-share friendly.
+       dvh handles the mobile address-bar dance so the frame doesn't get clipped. */
+    #book {
+      position: fixed; inset: 0;
+      display: grid;
+      place-items: center;
+      background: #2b2018;
+    }
+    #scene-frame {
+      position: relative;
+      width: min(100vw, calc(100dvh * 2 / 3), 720px);
+      height: min(100dvh, calc(100vw * 3 / 2), 1080px);
+      background: #f4ead5;
+      box-shadow: 0 30px 80px rgba(0,0,0,0.5);
+      overflow: hidden;
+    }
+    #scene-bg {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transition: opacity 600ms ease;
+    }
+    #hotspots {
+      position: absolute; inset: 0;
+      z-index: 2;
+      pointer-events: none; /* container is transparent to clicks; hotspot buttons re-enable */
+    }
+    .hotspot {
+      position: absolute;
+      cursor: pointer;
+      pointer-events: auto;
+      -webkit-tap-highlight-color: transparent;
+      transform-origin: center;
+      will-change: transform;
+      background: transparent;
+      border: none;
+      padding: 0;
+    }
+    .hotspot img {
+      width: 100%;
+      height: auto;
+      display: block;
+      pointer-events: none;
+    }
+
+    /* === Ambient animations ===
+       Each is a gentle infinite loop. Keep durations 2-5s so the page is alive
+       without becoming distracting. */
+    @keyframes bob-soft {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50%      { transform: translateY(-4%) rotate(-1.5deg); }
+    }
+    .ambient-bob-soft { animation: bob-soft 3.2s ease-in-out infinite; }
+
+    @keyframes sway-soft {
+      0%, 100% { transform: rotate(-2deg); }
+      50%      { transform: rotate(2deg); }
+    }
+    .ambient-sway-soft { animation: sway-soft 2.8s ease-in-out infinite; }
+
+    @keyframes glow-pulse {
+      0%, 100% { filter: drop-shadow(0 0 6px rgba(255, 220, 130, 0.4)); }
+      50%      { filter: drop-shadow(0 0 14px rgba(255, 220, 130, 0.85)); }
+    }
+    .ambient-glow-pulse { animation: glow-pulse 2.4s ease-in-out infinite; }
+
+    @keyframes flutter {
+      0%, 100% { transform: translateY(0) rotate(0deg) scale(1); }
+      25%      { transform: translateY(-2%) rotate(2deg) scale(1.02); }
+      75%      { transform: translateY(-1%) rotate(-2deg) scale(1.01); }
+    }
+    .ambient-flutter { animation: flutter 2.6s ease-in-out infinite; }
+
+    @keyframes drift-slow {
+      0%, 100% { transform: translateX(0) translateY(0); }
+      50%      { transform: translateX(2%) translateY(-1.5%); }
+    }
+    .ambient-drift-slow { animation: drift-slow 4.5s ease-in-out infinite; }
+
+    .ambient-none { animation: none; }
+
+    /* === Tap animations ===
+       Triggered by JS adding a class for ~3-4s, then removed. Each runs once
+       (forwards) — the hotspot returns to its ambient loop afterward. */
+    @keyframes rocket-fly {
+      0%   { transform: translate(0, 0) rotate(0deg); }
+      60%  { transform: translate(220%, -180%) rotate(-30deg); }
+      61%  { opacity: 1; }
+      80%  { opacity: 0; transform: translate(280%, -240%) rotate(-30deg); }
+      81%  { opacity: 0; transform: translate(0, 0) rotate(0deg); }
+      100% { opacity: 1; transform: translate(0, 0) rotate(0deg); }
+    }
+    .rocket-fly { animation: rocket-fly 3.6s ease-in-out forwards; }
+
+    @keyframes dragon-flap {
+      0%, 100% { transform: rotate(0deg) translateY(0); }
+      20%      { transform: rotate(-8deg) translateY(-8%); }
+      40%      { transform: rotate(8deg) translateY(-12%); }
+      60%      { transform: rotate(-6deg) translateY(-8%); }
+      80%      { transform: rotate(4deg) translateY(-2%); }
+    }
+    .dragon-flap { animation: dragon-flap 3.2s ease-in-out forwards; }
+
+    @keyframes lamp-flicker {
+      0%, 100% { filter: drop-shadow(0 0 6px rgba(255, 220, 130, 0.4)); }
+      10%      { filter: drop-shadow(0 0 22px rgba(255, 240, 180, 1)); }
+      20%      { filter: drop-shadow(0 0 12px rgba(255, 220, 130, 0.7)); }
+      30%      { filter: drop-shadow(0 0 26px rgba(255, 240, 180, 1)); }
+      60%      { filter: drop-shadow(0 0 16px rgba(255, 220, 130, 0.85)); }
+    }
+    .lamp-flicker { animation: lamp-flicker 3.0s ease-in-out forwards; }
+
+    @keyframes wiggle {
+      0%, 100% { transform: rotate(0deg); }
+      20%      { transform: rotate(-15deg); }
+      40%      { transform: rotate(12deg); }
+      60%      { transform: rotate(-8deg); }
+      80%      { transform: rotate(5deg); }
+    }
+    .wiggle { animation: wiggle 1.8s ease-in-out forwards; }
+
+    @keyframes swing-arc {
+      0%, 100% { transform: rotate(0deg); }
+      25%      { transform: rotate(-22deg); }
+      75%      { transform: rotate(22deg); }
+    }
+    .swing-arc { animation: swing-arc 2.8s ease-in-out forwards; transform-origin: top center; }
+
+    @keyframes balloons-up {
+      0%   { transform: translateY(0); opacity: 1; }
+      90%  { transform: translateY(-180%); opacity: 1; }
+      100% { transform: translateY(-200%); opacity: 0; }
+    }
+    .balloons-up { animation: balloons-up 3.5s ease-out forwards; }
+
+    @keyframes door-open {
+      0%, 100% { transform: rotateY(0deg); }
+      40%      { transform: rotateY(-50deg); }
+      70%      { transform: rotateY(-50deg); }
+    }
+    .door-open { animation: door-open 3.0s ease-in-out forwards; transform-origin: left center; }
+
+    @keyframes window-glow {
+      0%, 100% { filter: brightness(1); }
+      50%      { filter: brightness(1.6) drop-shadow(0 0 14px rgba(255,230,150,0.9)); }
+    }
+    .window-glow { animation: window-glow 2.2s ease-in-out forwards; }
+
+    @keyframes bird-fly {
+      0%   { transform: translate(0,0) scale(1); }
+      100% { transform: translate(-220%, -90%) scale(0.5); opacity: 0; }
+    }
+    .bird-fly { animation: bird-fly 3.5s ease-out forwards; }
+
+    @keyframes train-go {
+      0%   { transform: translateX(0); }
+      100% { transform: translateX(220%); opacity: 0; }
+    }
+    .train-go { animation: train-go 3.2s linear forwards; }
+
+    @keyframes splash {
+      0%   { transform: scale(1); }
+      20%  { transform: scale(1.15) translateY(-4%); }
+      40%  { transform: scale(1.0) translateY(0); }
+      60%  { transform: scale(1.12) translateY(-3%); }
+      100% { transform: scale(1); }
+    }
+    .splash { animation: splash 2.6s ease-out forwards; }
+
+    @keyframes sparkle-burst {
+      0%   { transform: scale(1); filter: brightness(1); }
+      30%  { transform: scale(1.25); filter: brightness(1.5) drop-shadow(0 0 20px rgba(255,255,200,1)); }
+      100% { transform: scale(1); filter: brightness(1); }
+    }
+    .sparkle-burst { animation: sparkle-burst 2.5s ease-out forwards; }
+
+    @keyframes hand-reach {
+      0%, 100% { transform: translate(0,0); }
+      50%      { transform: translate(8%, -4%); }
+    }
+    .hand-reach { animation: hand-reach 2.4s ease-in-out forwards; }
+
+    @keyframes page-turn {
+      0%, 100% { transform: rotateY(0deg); }
+      50%      { transform: rotateY(-50deg); }
+    }
+    .page-turn { animation: page-turn 2.6s ease-in-out forwards; transform-origin: left center; }
+
+    /* "Tap me" idle hint — pulses a random hotspot once after 4.5s of inactivity. */
+    @keyframes hint-pulse {
+      0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(255,240,180,0)); }
+      50%      { transform: scale(1.1); filter: drop-shadow(0 0 16px rgba(255,240,180,0.95)); }
+    }
+    .hint-pulse { animation: hint-pulse 1.4s ease-in-out 2; }
+
+    /* Sliding page transition — scene content (bg + hotspots + narrator + tap zones)
+       slides horizontally; chrome (home, dots, title) stays fixed. */
+    #scene-content {
+      position: absolute;
+      inset: 0;
+      will-change: transform;
+    }
+
+    #narrator {
+      position: absolute;
+      z-index: 3;
+      left: 4%; right: 4%;
+      bottom: 4%;
+      padding: 16px 22px;
+      background: rgba(255, 250, 235, 0.92);
+      border-radius: 14px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+      font-size: clamp(17px, 4.2vw, 26px);
+      line-height: 1.4;
+      color: #2b2018;
+      text-align: center;
+      backdrop-filter: blur(2px);
+      pointer-events: none; /* don't intercept tap-zone clicks */
+    }
+    /* Invisible left/right tap zones for prev/next navigation. */
+    .tap-zone {
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 25%;
+      background: transparent;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      z-index: 1;
+    }
+    #tap-prev { left: 0; }
+    #tap-next { right: 0; }
+    #scene-dots {
+      position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 8px;
+      z-index: 10;
+    }
+    .scene-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: rgba(255, 250, 235, 0.55);
+      transition: background 200ms ease, transform 200ms ease;
+    }
+    .scene-dot.active { background: #fffaeb; transform: scale(1.3); }
+    #home-btn {
+      position: absolute; top: 14px; left: 16px;
+      width: 44px; height: 44px;
+      background: rgba(255, 250, 235, 0.85);
+      border: none; border-radius: 50%;
+      font-size: 22px;
+      cursor: pointer;
+      z-index: 10;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #home-btn:active { transform: scale(0.92); }
+    #loading {
+      position: absolute; inset: 0;
+      display: grid; place-items: center;
+      background: #f4ead5;
+      color: #5a4a36;
+      font-size: 22px;
+      z-index: 5;
+      transition: opacity 400ms ease;
+    }
+    #loading.hidden { opacity: 0; pointer-events: none; }
+
+    #title-overlay {
+      position: absolute; inset: 0;
+      display: grid; place-items: center;
+      background: rgba(43, 32, 24, 0.55);
+      backdrop-filter: blur(2px);
+      z-index: 20;
+      cursor: pointer;
+      transition: opacity 600ms ease;
+    }
+    #title-overlay.hidden { opacity: 0; pointer-events: none; }
+    #title-overlay .title-card {
+      background: #fffaeb;
+      padding: clamp(24px, 4vw, 60px) clamp(36px, 6vw, 80px);
+      border-radius: 18px;
+      text-align: center;
+      box-shadow: 0 18px 50px rgba(0,0,0,0.4);
+    }
+    #title-overlay h1 {
+      font-size: clamp(36px, 6vw, 64px);
+      color: #2b2018;
+      margin-bottom: 12px;
+    }
+    #title-overlay p {
+      font-size: clamp(16px, 2vw, 22px);
+      color: #5a4a36;
+    }
+  </style>
+</head>
+<body>
+  <div id="book">
+    <div id="scene-frame">
+      <div id="scene-content">
+        <img id="scene-bg" alt="" />
+        <button id="tap-prev" class="tap-zone" aria-label="Previous page" tabindex="-1"></button>
+        <button id="tap-next" class="tap-zone" aria-label="Next page" tabindex="-1"></button>
+        <div id="hotspots"></div>
+        <div id="narrator"></div>
+      </div>
+      <button id="home-btn" aria-label="Back home">🏠</button>
+      <div id="scene-dots" role="tablist" aria-label="Scene"></div>
+      <div id="title-overlay">
+        <div class="title-card">
+          <h1>STORY TITLE</h1>
+          <p>Tap to begin</p>
+        </div>
+      </div>
+      <div id="loading">Loading…</div>
+    </div>
+  </div>
+
+  <script>
+    /* === Fill in SCENES below.
+       See the comment at the top of this file for the schema. === */
+    const SCENES = [
+      // {
+      //   id: 1,
+      //   bg: 'assets/scene-1-bg.png',
+      //   alt: 'A description of the painted scene for screen readers',
+      //   text: "Narrator text for this page.",
+      //   hotspots: [
+      //     { slug: 'rocket', x: 0.05, y: 0.05, w: 0.13, ambient: 'flutter', tap: 'rocket-fly' },
+      //   ],
+      // },
+    ];
+
+    let currentScene = 0;
+
+    const $ = (sel) => document.querySelector(sel);
+    const bgEl = $('#scene-bg');
+    const hotspotsEl = $('#hotspots');
+    const narratorEl = $('#narrator');
+    const dotsEl = $('#scene-dots');
+    const tapPrev = $('#tap-prev');
+    const tapNext = $('#tap-next');
+    const homeBtn = $('#home-btn');
+    const loadingEl = $('#loading');
+    const sceneFrame = $('#scene-frame');
+    const sceneContent = $('#scene-content');
+    const titleOverlay = $('#title-overlay');
+
+    function preloadScene(idx) {
+      const scene = SCENES[idx];
+      if (!scene) return;
+      const img = new Image();
+      img.src = scene.bg;
+      (scene.hotspots || []).forEach(h => {
+        const e = new Image();
+        e.src = `assets/scene-${scene.id}-${h.slug}.png`;
+      });
+    }
+
+    function renderScene(idx) {
+      const scene = SCENES[idx];
+      if (!scene) {
+        narratorEl.textContent = 'No scenes yet — check back soon!';
+        loadingEl.classList.add('hidden');
+        updateNav();
+        return;
+      }
+      loadingEl.classList.remove('hidden');
+      bgEl.src = scene.bg;
+      bgEl.alt = scene.alt || '';
+      narratorEl.textContent = scene.text || '';
+      hotspotsEl.innerHTML = '';
+      (scene.hotspots || []).forEach(h => {
+        const el = document.createElement('button');
+        el.className = `hotspot ambient-${h.ambient}`;
+        el.style.left = (h.x * 100) + '%';
+        el.style.top = (h.y * 100) + '%';
+        el.style.width = (h.w * 100) + '%';
+        if (h.opacity !== undefined) el.style.opacity = h.opacity;
+        if (h.blend) el.style.mixBlendMode = h.blend;
+        el.setAttribute('aria-label', h.slug.replace(/-/g, ' '));
+        const img = document.createElement('img');
+        img.src = `assets/scene-${scene.id}-${h.slug}.png`;
+        img.alt = '';
+        el.appendChild(img);
+        el.addEventListener('click', (e) => { e.stopPropagation(); triggerTap(el, h.tap); });
+        hotspotsEl.appendChild(el);
+      });
+      bgEl.onload = () => loadingEl.classList.add('hidden');
+      updateNav();
+
+      if (window._hintTimer) clearTimeout(window._hintTimer);
+      window._hintTimer = setTimeout(() => {
+        const hotspots = hotspotsEl.querySelectorAll('.hotspot');
+        if (!hotspots.length) return;
+        const pick = hotspots[Math.floor(Math.random() * hotspots.length)];
+        pick.classList.add('hint-pulse');
+        setTimeout(() => pick.classList.remove('hint-pulse'), 3000);
+      }, 4500);
+
+      preloadScene(idx + 1);
+    }
+
+    function triggerTap(el, tapClass) {
+      if (window._hintTimer) clearTimeout(window._hintTimer);
+      if (!tapClass) return;
+      el.classList.remove(tapClass);
+      void el.offsetWidth; // force reflow so the animation restarts
+      el.classList.add(tapClass);
+      setTimeout(() => el.classList.remove(tapClass), 4000);
+    }
+
+    function updateNav() {
+      tapPrev.style.display = currentScene === 0 ? 'none' : '';
+      tapNext.style.display = currentScene >= SCENES.length - 1 ? 'none' : '';
+      dotsEl.innerHTML = '';
+      for (let i = 0; i < SCENES.length; i++) {
+        const dot = document.createElement('div');
+        dot.className = 'scene-dot' + (i === currentScene ? ' active' : '');
+        dot.setAttribute('role', 'tab');
+        dot.setAttribute('aria-label', `Scene ${i + 1}`);
+        dotsEl.appendChild(dot);
+      }
+    }
+
+    let isTransitioning = false;
+    const SLIDE_MS = 280;
+    function goTo(idx) {
+      if (idx < 0 || idx >= SCENES.length) return;
+      if (idx === currentScene || isTransitioning) return;
+      isTransitioning = true;
+      const dir = idx > currentScene ? -1 : 1;
+
+      sceneContent.style.transition = `transform ${SLIDE_MS}ms ease`;
+      sceneContent.style.transform = `translateX(${dir * 100}%)`;
+
+      setTimeout(() => {
+        sceneContent.style.transition = 'none';
+        sceneContent.style.transform = `translateX(${-dir * 100}%)`;
+        currentScene = idx;
+        renderScene(idx);
+        void sceneContent.offsetWidth;
+        sceneContent.style.transition = `transform ${SLIDE_MS}ms ease`;
+        sceneContent.style.transform = 'translateX(0)';
+        setTimeout(() => { isTransitioning = false; }, SLIDE_MS + 20);
+      }, SLIDE_MS);
+    }
+
+    tapPrev.addEventListener('click', () => goTo(currentScene - 1));
+    tapNext.addEventListener('click', () => goTo(currentScene + 1));
+    homeBtn.addEventListener('click', () => { window.location.href = '/'; });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') goTo(currentScene - 1);
+      else if (e.key === 'ArrowRight') goTo(currentScene + 1);
+    });
+
+    let touchStartX = null;
+    sceneFrame.addEventListener('touchstart', (e) => {
+      touchStartX = e.touches[0].clientX;
+    }, { passive: true });
+    sceneFrame.addEventListener('touchend', (e) => {
+      if (touchStartX === null) return;
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      touchStartX = null;
+      if (Math.abs(dx) < 50) return;
+      if (dx < 0) goTo(currentScene + 1);
+      else        goTo(currentScene - 1);
+    }, { passive: true });
+
+    function dismissTitle() {
+      titleOverlay.classList.add('hidden');
+      setTimeout(() => titleOverlay.remove(), 700);
+    }
+    titleOverlay.addEventListener('click', dismissTitle);
+    document.addEventListener('keydown', dismissTitle, { once: true });
+
+    preloadScene(0);
+    preloadScene(1);
+    renderScene(0);
+  </script>
+</body>
+</html>

@@ -11,6 +11,7 @@ docs/
 .pytest_cache/
 __pycache__/
 
-# Local Claude Code / superpowers state
-.claude/
+# Local Claude Code / superpowers state — but check in shared skills
+.claude/*
+!.claude/skills/
 .superpowers/
