@@ -138,6 +138,47 @@ export function isConfirmation(text: string): boolean {
   return false;
 }
 
+// ── Pending-build intent classifier ──────────────────────────────────────
+
+export type PendingIntent = "CONFIRM" | "CANCEL" | "CLARIFY";
+
+const CANCEL_TOKENS = new Set([
+  "no", "nope", "stop", "cancel", "nevermind", "wait", "scrap that",
+  "not yet", "actually no", "no thanks", "skip", "nah",
+]);
+
+export function looksLikeCancel(text: string): boolean {
+  const n = text.trim().toLowerCase().replace(/[!?.…,]/g, "");
+  if (!n) return false;
+  if (CANCEL_TOKENS.has(n)) return true;
+  const firstSpace = n.indexOf(" ");
+  if (firstSpace > 0 && CANCEL_TOKENS.has(n.slice(0, firstSpace))) return true;
+  return false;
+}
+
+export async function classifyPendingResponse(
+  text: string,
+  pending: PendingGameBuild,
+  anthropic: Anthropic
+): Promise<PendingIntent> {
+  if (isConfirmation(text)) return "CONFIRM";
+  if (looksLikeCancel(text)) return "CANCEL";
+  try {
+    const r = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 16,
+      system: `You classify a kid's reply when an AI assistant has asked "should I update this game now?" The pending change is: "${pending.revisionRequest ?? "(building a new game)"}".\n\nReturn EXACTLY one of these uppercase labels and nothing else:\n- CONFIRM: kid is agreeing to proceed (yes/yep/sure/etc.)\n- CANCEL: kid is rejecting/aborting the change (no/stop/never mind/etc.)\n- CLARIFY: kid is refining, correcting, or adding detail to the pending change`,
+      messages: [{ role: "user", content: `Kid's reply: ${text}` }],
+    });
+    const out = (r.content[0]?.type === "text" ? r.content[0].text : "").trim().toUpperCase();
+    if (out.includes("CONFIRM")) return "CONFIRM";
+    if (out.includes("CANCEL")) return "CANCEL";
+    return "CLARIFY";
+  } catch {
+    return "CLARIFY";  // safest default — preserves pending context
+  }
+}
+
 function flagsMessage(text: string): boolean {
   const lower = text.toLowerCase();
   const alarmPhrases = ["where do you live", "what is your address", "send me money", "phone number", "password", "credit card"];
@@ -172,7 +213,7 @@ async function downloadPhoto(fileId: string): Promise<{ base64: string; mimeType
 
 // ── Conversation loop ─────────────────────────────────────────────────────
 
-const conversationHistory: Anthropic.Messages.MessageParam[] = [];
+export const conversationHistory: Anthropic.Messages.MessageParam[] = [];
 type PendingGameBuild = { gameName: string; gameId?: string; revisionRequest?: string };
 let pendingGameBuild: PendingGameBuild | null = null;
 
@@ -351,13 +392,14 @@ async function handleMessage(
 
   const flagged = flagsMessage(text);
   insertTurn("kid", text, flagged);
+  conversationHistory.push({ role: "user", content: text });
   if (flagged) console.warn(`⚠️  FLAGGED message: "${text}"`);
 
   if (pendingGameBuild !== null) {
-    if (isConfirmation(text)) {
+    const intent = await classifyPendingResponse(text, pendingGameBuild, anthropic);
+    if (intent === "CONFIRM") {
       const { gameName, gameId, revisionRequest } = pendingGameBuild;
       setPendingBuild(null);
-      conversationHistory.push({ role: "user", content: text });
       const startMsg = "Ok let me make it!! Give me a sec... 🔨⭐";
       await sendMessage(chatId, startMsg);
       insertTurn("guardian", startMsg);
@@ -443,13 +485,24 @@ async function handleMessage(
         setPendingBuild({ gameName, gameId, revisionRequest });
       }
       return;
-    } else {
+    } else if (intent === "CANCEL") {
       setPendingBuild(null);
-      conversationHistory.push({ role: "user", content: text });
       const cancelMsg = "No problem! 😊 What would you like to do?";
       await sendMessage(chatId, cancelMsg);
       insertTurn("guardian", cancelMsg);
       conversationHistory.push({ role: "assistant", content: cancelMsg });
+      return;
+    } else { // intent === "CLARIFY"
+      const merged = pendingGameBuild.revisionRequest
+        ? `${pendingGameBuild.revisionRequest}\n\nClarification: ${text}`
+        : text;
+      // CRITICAL: use setPendingBuild() not direct assignment — persists to disk
+      setPendingBuild({ ...pendingGameBuild, revisionRequest: merged });
+      const lastClarification = text.replace(/\n+/g, " ").slice(0, 200);
+      const clarifyReply = `Got it, thanks for the extra detail!! 🎯\n\nSo the change is: ${lastClarification}\n\nShould I update it now? ✨`;
+      await sendMessage(chatId, clarifyReply);
+      insertTurn("guardian", clarifyReply);
+      conversationHistory.push({ role: "assistant", content: clarifyReply });
       return;
     }
   }
@@ -573,8 +626,8 @@ async function handleMessage(
     .replace(/^CREATION_ID:\s*.+\n?/m, "")
     .replace(/^CREATION_NAME:\s*.+\n?/m, "")
     .trim();
-  conversationHistory.push({ role: "assistant", content: cleanReply });
   insertTurn("guardian", cleanReply);
+  conversationHistory.push({ role: "assistant", content: cleanReply });
   await sendMessage(chatId, cleanReply);
 
   if (conversationHistory.length > SUMMARY_TRIGGER) {
