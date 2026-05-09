@@ -38,6 +38,49 @@ function isConfirmation(text: string): boolean {
   return BUILD_CONFIRMATIONS.some((c) => lower.includes(c));
 }
 
+// ── Pending-build intent classifier ──────────────────────────────────────
+
+export type PendingIntent = "CONFIRM" | "CANCEL" | "CLARIFY";
+
+const CANCEL_TOKENS = new Set([
+  "no", "nope", "stop", "cancel", "nevermind", "never mind", "wait", "wait!", "not yet",
+  "actually no", "scrap that", "no thanks", "skip", "nah",
+]);
+
+function looksLikeCancel(text: string): boolean {
+  const n = text.trim().toLowerCase().replace(/[!?.…,]/g, "");
+  if (!n) return false;
+  if (CANCEL_TOKENS.has(n)) return true;
+  const firstSpace = n.indexOf(" ");
+  if (firstSpace > 0 && CANCEL_TOKENS.has(n.slice(0, firstSpace))) return true;
+  return false;
+}
+
+export async function classifyPendingResponse(
+  text: string,
+  pending: { gameName: string; gameId?: string; revisionRequest?: string },
+  anthropic: Anthropic
+): Promise<PendingIntent> {
+  if (isConfirmation(text)) return "CONFIRM";
+  if (looksLikeCancel(text)) return "CANCEL";
+
+  // LLM fallback
+  try {
+    const r = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 16,
+      system: `You classify a kid's reply when an AI assistant has asked "should I update this game now?" The pending change is: "${pending.revisionRequest ?? "(building a new game)"}".\n\nReturn EXACTLY one of these uppercase labels and nothing else:\n- CONFIRM: kid is agreeing to proceed (yes/yep/sure/etc.)\n- CANCEL: kid is rejecting/aborting the change (no/stop/never mind/etc.)\n- CLARIFY: kid is refining, correcting, or adding detail to the pending change (most common when reply is a sentence describing the bug or feature differently)`,
+      messages: [{ role: "user", content: `Kid's reply: ${text}` }],
+    });
+    const out = (r.content[0]?.type === "text" ? r.content[0].text : "").trim().toUpperCase();
+    if (out.includes("CONFIRM")) return "CONFIRM";
+    if (out.includes("CANCEL")) return "CANCEL";
+    return "CLARIFY";
+  } catch {
+    return "CLARIFY"; // safest default — preserves pending context
+  }
+}
+
 function flagsMessage(text: string): boolean {
   const lower = text.toLowerCase();
   const alarmPhrases = ["where do you live", "what is your address", "send me money", "phone number", "password", "credit card"];
@@ -144,7 +187,8 @@ async function handleMessage(
   if (flagged) console.warn(`⚠️  FLAGGED message: "${text}"`);
 
   if (pendingGameBuild !== null) {
-    if (isConfirmation(text)) {
+    const intent = await classifyPendingResponse(text, pendingGameBuild, anthropic);
+    if (intent === "CONFIRM") {
       const { gameName, gameId, revisionRequest } = pendingGameBuild;
       pendingGameBuild = null;
       conversationHistory.push({ role: "user", content: text });
@@ -181,13 +225,26 @@ async function handleMessage(
         pendingGameBuild = { gameName, gameId, revisionRequest };
       }
       return;
-    } else {
+    } else if (intent === "CANCEL") {
       pendingGameBuild = null;
       conversationHistory.push({ role: "user", content: text });
       const cancelMsg = "No problem! 😊 What would you like to do?";
       await sendMessage(chatId, cancelMsg);
       insertTurn("guardian", cancelMsg);
       conversationHistory.push({ role: "assistant", content: cancelMsg });
+      return;
+    } else {
+      // CLARIFY — merge clarification into revisionRequest, re-ask confirmation
+      const merged = pendingGameBuild.revisionRequest
+        ? `${pendingGameBuild.revisionRequest}\n\nClarification: ${text}`
+        : text;
+      pendingGameBuild = { ...pendingGameBuild, revisionRequest: merged };
+      conversationHistory.push({ role: "user", content: text });
+      const lastClarification = merged.split("\n\nClarification: ").pop() ?? text;
+      const clarifyReply = `Got it, thanks for the extra detail!! 🎯\n\nSo the change is: ${lastClarification}\n\nShould I update it now? ✨`;
+      await sendMessage(chatId, clarifyReply);
+      insertTurn("guardian", clarifyReply);
+      conversationHistory.push({ role: "assistant", content: clarifyReply });
       return;
     }
   }
