@@ -179,6 +179,30 @@ export async function classifyPendingResponse(
   }
 }
 
+export function logTurnSafely(direction: "kid" | "guardian", message: string, role: "user" | "assistant"): void {
+  try {
+    insertTurn(direction, message);
+    conversationHistory.push({ role, content: message });
+  } catch (logErr) {
+    console.error(
+      `[telegram] failed to log ${direction} turn (DB hiccup) — message was already delivered:`,
+      logErr instanceof Error ? logErr.message : logErr
+    );
+  }
+}
+
+export function logKidTurnSafely(text: string, flagged: boolean): void {
+  try {
+    insertTurn("kid", text, flagged);
+    conversationHistory.push({ role: "user", content: text });
+  } catch (logErr) {
+    console.error(
+      `[telegram] failed to log kid turn (DB hiccup) — message was already received:`,
+      logErr instanceof Error ? logErr.message : logErr
+    );
+  }
+}
+
 function flagsMessage(text: string): boolean {
   const lower = text.toLowerCase();
   const alarmPhrases = ["where do you live", "what is your address", "send me money", "phone number", "password", "credit card"];
@@ -391,8 +415,7 @@ async function handleMessage(
   }
 
   const flagged = flagsMessage(text);
-  insertTurn("kid", text, flagged);
-  conversationHistory.push({ role: "user", content: text });
+  logKidTurnSafely(text, flagged);
   if (flagged) console.warn(`⚠️  FLAGGED message: "${text}"`);
 
   if (pendingGameBuild !== null) {
@@ -400,10 +423,10 @@ async function handleMessage(
     if (intent === "CONFIRM") {
       const { gameName, gameId, revisionRequest } = pendingGameBuild;
       setPendingBuild(null);
+      conversationHistory.push({ role: "user", content: text });
       const startMsg = "Ok let me make it!! Give me a sec... 🔨⭐";
       await sendMessage(chatId, startMsg);
-      insertTurn("guardian", startMsg);
-      conversationHistory.push({ role: "assistant", content: startMsg });
+      logTurnSafely("guardian", startMsg, "assistant");
       try {
         // Resolve slug + revision state. resolveSlug() is the same helper buildGame() uses internally.
         const gamesDir = join(config.playgroundDir, "games");
@@ -464,8 +487,7 @@ async function handleMessage(
         );
         const reply = `Here it is!! Open this on your tablet: ${url} 🎉`;
         await sendMessage(chatId, reply);
-        insertTurn("guardian", reply);
-        conversationHistory.push({ role: "assistant", content: reply });
+        logTurnSafely("guardian", reply, "assistant");
         try {
           const job = JSON.parse(readFileSync(jobPath, "utf8"));
           job.telegramSentAt = new Date().toISOString();
@@ -480,17 +502,16 @@ async function handleMessage(
           reply = `Oops, something went a little wrong! 😅 Want to try again? Just say yes!`;
         }
         await sendMessage(chatId, reply);
-        insertTurn("guardian", reply);
-        conversationHistory.push({ role: "assistant", content: reply });
+        logTurnSafely("guardian", reply, "assistant");
         setPendingBuild({ gameName, gameId, revisionRequest });
       }
       return;
     } else if (intent === "CANCEL") {
       setPendingBuild(null);
+      conversationHistory.push({ role: "user", content: text });
       const cancelMsg = "No problem! 😊 What would you like to do?";
       await sendMessage(chatId, cancelMsg);
-      insertTurn("guardian", cancelMsg);
-      conversationHistory.push({ role: "assistant", content: cancelMsg });
+      logTurnSafely("guardian", cancelMsg, "assistant");
       return;
     } else { // intent === "CLARIFY"
       const merged = pendingGameBuild.revisionRequest
@@ -498,11 +519,11 @@ async function handleMessage(
         : text;
       // CRITICAL: use setPendingBuild() not direct assignment — persists to disk
       setPendingBuild({ ...pendingGameBuild, revisionRequest: merged });
+      conversationHistory.push({ role: "user", content: text });
       const lastClarification = text.replace(/\n+/g, " ").slice(0, 200);
       const clarifyReply = `Got it, thanks for the extra detail!! 🎯\n\nSo the change is: ${lastClarification}\n\nShould I update it now? ✨`;
       await sendMessage(chatId, clarifyReply);
-      insertTurn("guardian", clarifyReply);
-      conversationHistory.push({ role: "assistant", content: clarifyReply });
+      logTurnSafely("guardian", clarifyReply, "assistant");
       return;
     }
   }
@@ -626,8 +647,7 @@ async function handleMessage(
     .replace(/^CREATION_ID:\s*.+\n?/m, "")
     .replace(/^CREATION_NAME:\s*.+\n?/m, "")
     .trim();
-  insertTurn("guardian", cleanReply);
-  conversationHistory.push({ role: "assistant", content: cleanReply });
+  logTurnSafely("guardian", cleanReply, "assistant");
   await sendMessage(chatId, cleanReply);
 
   if (conversationHistory.length > SUMMARY_TRIGGER) {
