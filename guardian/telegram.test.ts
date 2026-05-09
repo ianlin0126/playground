@@ -1,5 +1,5 @@
-import { describe, it, expect } from "bun:test";
-import { classifyPendingResponse } from "./telegram";
+import { describe, it, expect, beforeEach, spyOn } from "bun:test";
+import { classifyPendingResponse, logTurnSafely, logKidTurnSafely, conversationHistory } from "./telegram";
 import type { PendingIntent } from "./telegram";
 
 // ── Mock helpers ─────────────────────────────────────────────────────────────
@@ -186,5 +186,61 @@ describe("pending-build classifier — CLARIFY path", () => {
       fakeAnthropic as never
     );
     expect(intent).toBe("CLARIFY");
+  });
+});
+
+// ── logTurnSafely / logging failures don't masquerade as build failures ───────
+
+describe("logTurnSafely / logging failures don't masquerade as build failures", () => {
+  // insertTurn will throw "DB not initialised" since no initDb() is called in tests.
+  // We rely on that natural behaviour to exercise the catch branch.
+
+  beforeEach(() => {
+    // Reset the shared conversationHistory before each test to avoid cross-test bleed.
+    conversationHistory.length = 0;
+  });
+
+  it("returns normally when insertTurn throws (no exception propagated)", () => {
+    // insertTurn throws "DB not initialised" — logTurnSafely must swallow it.
+    expect(() => logTurnSafely("guardian", "test message", "assistant")).not.toThrow();
+  });
+
+  it("logs to stderr when insertTurn throws", () => {
+    const spy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      logTurnSafely("guardian", "test message", "assistant");
+      expect(spy).toHaveBeenCalledTimes(1);
+      const [firstArg] = spy.mock.calls[0] as [string, ...unknown[]];
+      expect(firstArg).toContain("[telegram] failed to log guardian turn");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("conversationHistory NOT mutated when insertTurn throws (atomic semantics)", () => {
+    // insertTurn throws before conversationHistory.push can run.
+    logTurnSafely("guardian", "test message", "assistant");
+    expect(conversationHistory.length).toBe(0);
+  });
+
+  it("logKidTurnSafely returns normally when insertTurn throws", () => {
+    expect(() => logKidTurnSafely("hello", false)).not.toThrow();
+  });
+
+  it("logKidTurnSafely logs to stderr when insertTurn throws", () => {
+    const spy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      logKidTurnSafely("hello", false);
+      expect(spy).toHaveBeenCalledTimes(1);
+      const [firstArg] = spy.mock.calls[0] as [string, ...unknown[]];
+      expect(firstArg).toContain("[telegram] failed to log kid turn");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("logKidTurnSafely: conversationHistory NOT mutated when insertTurn throws", () => {
+    logKidTurnSafely("hello", false);
+    expect(conversationHistory.length).toBe(0);
   });
 });

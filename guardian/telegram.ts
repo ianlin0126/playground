@@ -81,6 +81,30 @@ export async function classifyPendingResponse(
   }
 }
 
+export function logTurnSafely(direction: "kid" | "guardian", message: string, role: "user" | "assistant"): void {
+  try {
+    insertTurn(direction, message);
+    conversationHistory.push({ role, content: message });
+  } catch (logErr) {
+    console.error(
+      `[telegram] failed to log ${direction} turn (DB hiccup) — message was already delivered:`,
+      logErr instanceof Error ? logErr.message : logErr
+    );
+  }
+}
+
+export function logKidTurnSafely(text: string, flagged: boolean): void {
+  try {
+    insertTurn("kid", text, flagged);
+    conversationHistory.push({ role: "user", content: text });
+  } catch (logErr) {
+    console.error(
+      `[telegram] failed to log kid turn (DB hiccup):`,
+      logErr instanceof Error ? logErr.message : logErr
+    );
+  }
+}
+
 function flagsMessage(text: string): boolean {
   const lower = text.toLowerCase();
   const alarmPhrases = ["where do you live", "what is your address", "send me money", "phone number", "password", "credit card"];
@@ -115,7 +139,7 @@ async function downloadPhoto(fileId: string): Promise<{ base64: string; mimeType
 
 // ── Conversation loop ─────────────────────────────────────────────────────
 
-const conversationHistory: Anthropic.Messages.MessageParam[] = [];
+export const conversationHistory: Anthropic.Messages.MessageParam[] = [];
 let pendingGameBuild: { gameName: string; gameId?: string; revisionRequest?: string } | null = null;
 let _summaryInjected = false;
 
@@ -183,7 +207,7 @@ async function handleMessage(
   }
 
   const flagged = flagsMessage(text);
-  insertTurn("kid", text, flagged);
+  logKidTurnSafely(text, flagged);
   if (flagged) console.warn(`⚠️  FLAGGED message: "${text}"`);
 
   if (pendingGameBuild !== null) {
@@ -194,8 +218,7 @@ async function handleMessage(
       conversationHistory.push({ role: "user", content: text });
       const startMsg = "Ok let me make it!! Give me a sec... 🔨⭐";
       await sendMessage(chatId, startMsg);
-      insertTurn("guardian", startMsg);
-      conversationHistory.push({ role: "assistant", content: startMsg });
+      logTurnSafely("guardian", startMsg, "assistant");
       try {
         const recentContext = conversationHistory.slice(-10).map((m) => ({
           role: m.role,
@@ -204,8 +227,7 @@ async function handleMessage(
         const { url, jobPath } = await buildGame(gameName, chatId, revisionRequest, (msg) => sendMessage(chatId, msg).catch(() => {}), recentContext, gameId);
         const reply = `Here it is!! Open this on your tablet: ${url} 🎉`;
         await sendMessage(chatId, reply);
-        insertTurn("guardian", reply);
-        conversationHistory.push({ role: "assistant", content: reply });
+        logTurnSafely("guardian", reply, "assistant");
         try {
           const job = JSON.parse(readFileSync(jobPath, "utf8"));
           job.telegramSentAt = new Date().toISOString();
@@ -220,8 +242,7 @@ async function handleMessage(
           reply = `Oops, something went a little wrong! 😅 Want to try again? Just say yes!`;
         }
         await sendMessage(chatId, reply);
-        insertTurn("guardian", reply);
-        conversationHistory.push({ role: "assistant", content: reply });
+        logTurnSafely("guardian", reply, "assistant");
         pendingGameBuild = { gameName, gameId, revisionRequest };
       }
       return;
@@ -230,8 +251,7 @@ async function handleMessage(
       conversationHistory.push({ role: "user", content: text });
       const cancelMsg = "No problem! 😊 What would you like to do?";
       await sendMessage(chatId, cancelMsg);
-      insertTurn("guardian", cancelMsg);
-      conversationHistory.push({ role: "assistant", content: cancelMsg });
+      logTurnSafely("guardian", cancelMsg, "assistant");
       return;
     } else {
       // CLARIFY — merge clarification into revisionRequest, re-ask confirmation
@@ -243,8 +263,7 @@ async function handleMessage(
       const lastClarification = merged.split("\n\nClarification: ").pop() ?? text;
       const clarifyReply = `Got it, thanks for the extra detail!! 🎯\n\nSo the change is: ${lastClarification}\n\nShould I update it now? ✨`;
       await sendMessage(chatId, clarifyReply);
-      insertTurn("guardian", clarifyReply);
-      conversationHistory.push({ role: "assistant", content: clarifyReply });
+      logTurnSafely("guardian", clarifyReply, "assistant");
       return;
     }
   }
@@ -321,8 +340,7 @@ async function handleMessage(
     .replace(/^GAME_ID:\s*.+\n?/m, "")
     .replace(/^GAME_NAME:\s*.+\n?/m, "")
     .trim();
-  conversationHistory.push({ role: "assistant", content: cleanReply });
-  insertTurn("guardian", cleanReply);
+  logTurnSafely("guardian", cleanReply, "assistant");
   await sendMessage(chatId, cleanReply);
 
   if (conversationHistory.length > SUMMARY_TRIGGER) {
