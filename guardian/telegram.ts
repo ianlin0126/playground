@@ -151,8 +151,17 @@ export function looksLikeCancel(text: string): boolean {
   const n = text.trim().toLowerCase().replace(/[!?.…,]/g, "");
   if (!n) return false;
   if (CANCEL_TOKENS.has(n)) return true;
-  const firstSpace = n.indexOf(" ");
-  if (firstSpace > 0 && CANCEL_TOKENS.has(n.slice(0, firstSpace))) return true;
+  return false;
+}
+
+export function isWholeMessageConfirmation(text: string): boolean {
+  if (CONFIRM_EMOJI_RE.test(text)) return true;
+  const normalized = normalizeForMatch(text);
+  if (!normalized) return false;
+  if (CONFIRM_TOKENS.has(normalized)) return true;
+  for (const phrase of CONFIRM_PHRASES) {
+    if (normalized === phrase) return true;
+  }
   return false;
 }
 
@@ -161,18 +170,30 @@ export async function classifyPendingResponse(
   pending: PendingGameBuild,
   anthropic: Anthropic
 ): Promise<PendingIntent> {
-  if (isConfirmation(text)) return "CONFIRM";
+  if (isWholeMessageConfirmation(text)) return "CONFIRM";
   if (looksLikeCancel(text)) return "CANCEL";
   try {
+    const systemPrompt = `You classify a kid's reply when an AI assistant has asked "should I update this game now?"
+
+Return EXACTLY one of these uppercase labels and nothing else:
+- CONFIRM: kid is agreeing to proceed (yes/yep/sure/etc.)
+- CANCEL: kid is rejecting/aborting the change (no/stop/never mind/etc.)
+- CLARIFY: kid is refining, correcting, or adding detail to the pending change`;
+
+    const userMessage = [
+      `Pending change: ${pending.revisionRequest ?? "(building a new game)"}`,
+      `Kid's reply: ${text}`,
+    ].join("\n\n");
+
     const r = await anthropic.messages.create({
       model: "claude-haiku-4-5",
       max_tokens: 16,
-      system: `You classify a kid's reply when an AI assistant has asked "should I update this game now?" The pending change is: "${pending.revisionRequest ?? "(building a new game)"}".\n\nReturn EXACTLY one of these uppercase labels and nothing else:\n- CONFIRM: kid is agreeing to proceed (yes/yep/sure/etc.)\n- CANCEL: kid is rejecting/aborting the change (no/stop/never mind/etc.)\n- CLARIFY: kid is refining, correcting, or adding detail to the pending change`,
-      messages: [{ role: "user", content: `Kid's reply: ${text}` }],
-    });
+      system: systemPrompt,
+      messages: [{ role: "user", content: userMessage }],
+    }, { signal: AbortSignal.timeout(5000) });
     const out = (r.content[0]?.type === "text" ? r.content[0].text : "").trim().toUpperCase();
-    if (out.includes("CONFIRM")) return "CONFIRM";
-    if (out.includes("CANCEL")) return "CANCEL";
+    if (out === "CONFIRM") return "CONFIRM";
+    if (out === "CANCEL") return "CANCEL";
     return "CLARIFY";
   } catch {
     return "CLARIFY";  // safest default — preserves pending context
