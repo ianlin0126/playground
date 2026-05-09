@@ -138,6 +138,92 @@ export function isConfirmation(text: string): boolean {
   return false;
 }
 
+// ── Pending-build intent classifier ──────────────────────────────────────
+
+export type PendingIntent = "CONFIRM" | "CANCEL" | "CLARIFY";
+
+const CANCEL_TOKENS = new Set([
+  "no", "nope", "stop", "cancel", "nevermind", "wait", "scrap that",
+  "not yet", "actually no", "no thanks", "skip", "nah",
+]);
+
+export function looksLikeCancel(text: string): boolean {
+  const n = text.trim().toLowerCase().replace(/[!?.…,]/g, "");
+  if (!n) return false;
+  if (CANCEL_TOKENS.has(n)) return true;
+  return false;
+}
+
+export function isWholeMessageConfirmation(text: string): boolean {
+  if (CONFIRM_EMOJI_RE.test(text)) return true;
+  const normalized = normalizeForMatch(text);
+  if (!normalized) return false;
+  if (CONFIRM_TOKENS.has(normalized)) return true;
+  for (const phrase of CONFIRM_PHRASES) {
+    if (normalized === phrase) return true;
+  }
+  return false;
+}
+
+export async function classifyPendingResponse(
+  text: string,
+  pending: PendingGameBuild,
+  anthropic: Anthropic
+): Promise<PendingIntent> {
+  if (isWholeMessageConfirmation(text)) return "CONFIRM";
+  if (looksLikeCancel(text)) return "CANCEL";
+  try {
+    const systemPrompt = `You classify a kid's reply when an AI assistant has asked "should I update this game now?"
+
+Return EXACTLY one of these uppercase labels and nothing else:
+- CONFIRM: kid is agreeing to proceed (yes/yep/sure/etc.)
+- CANCEL: kid is rejecting/aborting the change (no/stop/never mind/etc.)
+- CLARIFY: kid is refining, correcting, or adding detail to the pending change`;
+
+    const userMessage = [
+      `Pending change: ${pending.revisionRequest ?? "(building a new game)"}`,
+      `Kid's reply: ${text}`,
+    ].join("\n\n");
+
+    const r = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 16,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userMessage }],
+    }, { signal: AbortSignal.timeout(5000) });
+    const out = (r.content[0]?.type === "text" ? r.content[0].text : "").trim().toUpperCase();
+    if (out === "CONFIRM") return "CONFIRM";
+    if (out === "CANCEL") return "CANCEL";
+    return "CLARIFY";
+  } catch {
+    return "CLARIFY";  // safest default — preserves pending context
+  }
+}
+
+export function logTurnSafely(direction: "kid" | "guardian", message: string, role: "user" | "assistant"): void {
+  try {
+    insertTurn(direction, message);
+    conversationHistory.push({ role, content: message });
+  } catch (logErr) {
+    console.error(
+      `[telegram] failed to log ${direction} turn (DB hiccup) — message was already delivered:`,
+      logErr instanceof Error ? logErr.message : logErr
+    );
+  }
+}
+
+export function logKidTurnSafely(text: string, flagged: boolean): void {
+  try {
+    insertTurn("kid", text, flagged);
+    conversationHistory.push({ role: "user", content: text });
+  } catch (logErr) {
+    console.error(
+      `[telegram] failed to log kid turn (DB hiccup) — message was already received:`,
+      logErr instanceof Error ? logErr.message : logErr
+    );
+  }
+}
+
 function flagsMessage(text: string): boolean {
   const lower = text.toLowerCase();
   const alarmPhrases = ["where do you live", "what is your address", "send me money", "phone number", "password", "credit card"];
@@ -172,7 +258,7 @@ async function downloadPhoto(fileId: string): Promise<{ base64: string; mimeType
 
 // ── Conversation loop ─────────────────────────────────────────────────────
 
-const conversationHistory: Anthropic.Messages.MessageParam[] = [];
+export const conversationHistory: Anthropic.Messages.MessageParam[] = [];
 type PendingGameBuild = { gameName: string; gameId?: string; revisionRequest?: string };
 let pendingGameBuild: PendingGameBuild | null = null;
 
@@ -254,7 +340,7 @@ async function compressOldTurns(anthropic: Anthropic): Promise<void> {
         messages: [
           {
             role: "user",
-            content: `Summarize this conversation between a child (${config.kidName}, age 7-8) and a game-building assistant in 3-5 sentences. Focus on: games discussed or built, the child's preferences and interests, any recurring themes or requests, and the overall relationship tone. Be warm and specific.\n\n${transcript}`,
+            content: `Summarize this conversation between a child (${config.kidName}, age 7-8) and a creation-studio assistant in 3-5 sentences. Focus on: creations discussed or built, the child's preferences and interests, any recurring themes or requests, and the overall relationship tone. Be warm and specific.\n\n${transcript}`,
           },
         ],
       });
@@ -350,18 +436,18 @@ async function handleMessage(
   }
 
   const flagged = flagsMessage(text);
-  insertTurn("kid", text, flagged);
+  logKidTurnSafely(text, flagged);
   if (flagged) console.warn(`⚠️  FLAGGED message: "${text}"`);
 
   if (pendingGameBuild !== null) {
-    if (isConfirmation(text)) {
+    const intent = await classifyPendingResponse(text, pendingGameBuild, anthropic);
+    if (intent === "CONFIRM") {
       const { gameName, gameId, revisionRequest } = pendingGameBuild;
       setPendingBuild(null);
       conversationHistory.push({ role: "user", content: text });
       const startMsg = "Ok let me make it!! Give me a sec... 🔨⭐";
       await sendMessage(chatId, startMsg);
-      insertTurn("guardian", startMsg);
-      conversationHistory.push({ role: "assistant", content: startMsg });
+      logTurnSafely("guardian", startMsg, "assistant");
       try {
         // Resolve slug + revision state. resolveSlug() is the same helper buildGame() uses internally.
         const gamesDir = join(config.playgroundDir, "games");
@@ -422,8 +508,7 @@ async function handleMessage(
         );
         const reply = `Here it is!! Open this on your tablet: ${url} 🎉`;
         await sendMessage(chatId, reply);
-        insertTurn("guardian", reply);
-        conversationHistory.push({ role: "assistant", content: reply });
+        logTurnSafely("guardian", reply, "assistant");
         try {
           const job = JSON.parse(readFileSync(jobPath, "utf8"));
           job.telegramSentAt = new Date().toISOString();
@@ -438,18 +523,28 @@ async function handleMessage(
           reply = `Oops, something went a little wrong! 😅 Want to try again? Just say yes!`;
         }
         await sendMessage(chatId, reply);
-        insertTurn("guardian", reply);
-        conversationHistory.push({ role: "assistant", content: reply });
+        logTurnSafely("guardian", reply, "assistant");
         setPendingBuild({ gameName, gameId, revisionRequest });
       }
       return;
-    } else {
+    } else if (intent === "CANCEL") {
       setPendingBuild(null);
       conversationHistory.push({ role: "user", content: text });
       const cancelMsg = "No problem! 😊 What would you like to do?";
       await sendMessage(chatId, cancelMsg);
-      insertTurn("guardian", cancelMsg);
-      conversationHistory.push({ role: "assistant", content: cancelMsg });
+      logTurnSafely("guardian", cancelMsg, "assistant");
+      return;
+    } else { // intent === "CLARIFY"
+      const merged = pendingGameBuild.revisionRequest
+        ? `${pendingGameBuild.revisionRequest}\n\nClarification: ${text}`
+        : text;
+      // CRITICAL: use setPendingBuild() not direct assignment — persists to disk
+      setPendingBuild({ ...pendingGameBuild, revisionRequest: merged });
+      conversationHistory.push({ role: "user", content: text });
+      const lastClarification = text.replace(/\n+/g, " ").slice(0, 200);
+      const clarifyReply = `Got it, thanks for the extra detail!! 🎯\n\nSo the change is: ${lastClarification}\n\nShould I update it now? ✨`;
+      await sendMessage(chatId, clarifyReply);
+      logTurnSafely("guardian", clarifyReply, "assistant");
       return;
     }
   }
@@ -493,9 +588,9 @@ async function handleMessage(
   let reply = initialReply;
 
   // Safety net: if Claude used build-in-progress language OR a confirmation
-  // question ("Should I make it now?") without including a GAME_NAME: token,
+  // question ("Should I make it now?") without including a CREATION_NAME: token,
   // it's a forgotten-token case — re-prompt once to get a corrected response.
-  const nameMatch = () => reply.match(/^GAME_NAME:\s*(.+)$/m);
+  const nameMatch = () => reply.match(/^CREATION_NAME:\s*(.+)$/m);
   const BUILD_HALLUCINATION_RE = /\b(right now|working on it|on it[!,. ]|give me a sec|i'?m (building|making|updating|creating)|building it|making it|updating it)\b/i;
   const BUILD_CONFIRMATION_QUESTION_RE = /\bshould i\b.{0,80}\b(make|build|update|create|do)\b.{0,80}\bnow\b/i;
   const initialHasToken = !!nameMatch();
@@ -511,7 +606,7 @@ async function handleMessage(
       messages: [
         ...messagesForApi,
         { role: "assistant" as const, content: reply },
-        { role: "user" as const, content: "[System: Your response implied a build is in progress but no GAME_NAME: token was included, so nothing will actually be built. Please send a corrected response: either include the GAME_NAME: token if you are ready to build and ask 'Should I make it now? 🎮', or reply without any build-in-progress language.]" },
+        { role: "user" as const, content: "[System: Your response implied a build is in progress but no CREATION_NAME: token was included, so nothing will actually be built. Please send a corrected response: either include the CREATION_NAME: token if you are ready to build and ask 'Should I make it now? ✨', or reply without any build-in-progress language.]" },
       ],
     });
     if (corrected.content.length && corrected.content[0].type === "text") {
@@ -520,7 +615,7 @@ async function handleMessage(
     }
   }
 
-  // Second safety net: if the reply has BOTH a GAME_NAME: token AND a /games/<slug>/
+  // Second safety net: if the reply has BOTH a CREATION_NAME: token AND a /games/<slug>/
   // URL inside the same message, the LLM has hallucinated the build-completion
   // step. The real flow only emits a URL after buildGame returns, in a separate
   // sendMessage call — never in the same reply as the token. Re-prompt to get a
@@ -537,7 +632,7 @@ async function handleMessage(
       messages: [
         ...messagesForApi,
         { role: "assistant" as const, content: reply },
-        { role: "user" as const, content: "[System: Your reply contained a fabricated game URL. Only the server can produce a real URL after the build completes. Please send a corrected response: keep the GAME_NAME: token and ask 'Should I make it now? 🎮' (or 'Should I do it now? 🎮' for updates), but remove any URL, 'Here it is', 'Open this on your tablet', or 'Ok let me make it' content. The kid hasn't confirmed yet — just ask.]" },
+        { role: "user" as const, content: "[System: Your reply contained a fabricated game URL. Only the server can produce a real URL after the build completes. Please send a corrected response: keep the CREATION_NAME: token and ask 'Should I make it now? ✨' (or 'Should I do it now? ✨' for updates), but remove any URL, 'Here it is', 'Open this on your tablet', or 'Ok let me make it' content. The kid hasn't confirmed yet — just ask.]" },
       ],
     });
     if (corrected.content.length && corrected.content[0].type === "text") {
@@ -546,7 +641,7 @@ async function handleMessage(
   }
 
   const tokenMatch = nameMatch();
-  const idMatch = reply.match(/^GAME_ID:\s*(.+)$/m);
+  const idMatch = reply.match(/^CREATION_ID:\s*(.+)$/m);
   if (tokenMatch) {
     setPendingBuild({
       gameName: tokenMatch[1].trim(),
@@ -570,11 +665,10 @@ async function handleMessage(
   });
 
   const cleanReply = reply
-    .replace(/^GAME_ID:\s*.+\n?/m, "")
-    .replace(/^GAME_NAME:\s*.+\n?/m, "")
+    .replace(/^CREATION_ID:\s*.+\n?/m, "")
+    .replace(/^CREATION_NAME:\s*.+\n?/m, "")
     .trim();
-  conversationHistory.push({ role: "assistant", content: cleanReply });
-  insertTurn("guardian", cleanReply);
+  logTurnSafely("guardian", cleanReply, "assistant");
   await sendMessage(chatId, cleanReply);
 
   if (conversationHistory.length > SUMMARY_TRIGGER) {

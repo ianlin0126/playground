@@ -199,7 +199,7 @@ describe("BuildNotPickedUpError", () => {
 import { buildPromptForTest } from "./builder";
 
 describe("buildPrompt with SPEC", () => {
-  const sampleSpec = `# Star Catcher 🌟\n\n## Concept\nCatch falling stars (_kid_)\n\n## Goal\nGet 10 stars (_kid_)\n\n## Controls\n- tap (_kid_)\n\n## Game elements\n- **Player:** basket (_kid_)\n\n## Look & feel\n- **Theme / setting:** night sky (_kid_)\n\n## Change log\n- **2026-05-02** — initial build\n`;
+  const sampleSpec = `# Star Catcher 🌟\n\n## Concept\nCatch falling stars (_kid_)\n\n## Goal\nGet 10 stars (_kid_)\n\n## Interactions\n- tap (_kid_)\n\n## Elements\n- **Main character / player:** basket (_kid_)\n\n## Look & feel\n- **Theme / setting:** night sky (_kid_)\n\n## Change log\n- **2026-05-02** — initial build\n`;
 
   it("embeds the SPEC under a SPEC: heading for new builds", () => {
     const prompt = buildPromptForTest({
@@ -236,14 +236,14 @@ describe("buildPrompt with SPEC", () => {
     expect(prompt).not.toMatch(/Recent conversation/i);
   });
 
-  it("includes the verification checklist and GAME_READY marker", () => {
+  it("includes the verification checklist and CREATION_READY marker", () => {
     const prompt = buildPromptForTest({
       slug: "star-catcher",
       isRevision: false,
       specContent: sampleSpec,
       port: 3000,
     });
-    expect(prompt).toContain("GAME_READY: games/star-catcher/index.html");
+    expect(prompt).toContain("CREATION_READY: games/star-catcher/index.html");
     expect(prompt).toMatch(/onclick/);  // verification step still mentions IIFE/onclick check
   });
 });

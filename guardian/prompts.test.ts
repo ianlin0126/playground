@@ -11,7 +11,7 @@ import {
   getDefaultGuardianSystemPrompt,
   getWorkerSystemPrompt,
   getPmSynthesizerSystemPrompt,
-  STARTER_GAMES,
+  STARTER_CREATIONS,
 } from "./prompts";
 
 let testDir: string;
@@ -68,14 +68,21 @@ describe("getGuardianSystemPrompt", () => {
     expect(prompt).toContain("Clive");
   });
 
-  it("includes the starter games list", () => {
+  it("includes the starter creations list", () => {
     const prompt = getGuardianSystemPrompt("Clive");
-    for (const game of STARTER_GAMES) {
-      expect(prompt).toContain(game.name);
+    for (const item of STARTER_CREATIONS) {
+      expect(prompt).toContain(item.name);
     }
   });
 
-  it("lists existing games when provided", () => {
+  it("offers a mix of creation types (game, story, learning)", () => {
+    const prompt = getGuardianSystemPrompt("Clive");
+    expect(prompt).toMatch(/game/i);
+    expect(prompt).toMatch(/stor/i);
+    expect(prompt).toMatch(/learn/i);
+  });
+
+  it("lists existing creations when provided", () => {
     const prompt = getGuardianSystemPrompt("Clive", [
       { id: "abc123", name: "Star Game" },
       { id: "def456", name: "Maze Game" },
@@ -84,9 +91,9 @@ describe("getGuardianSystemPrompt", () => {
     expect(prompt).toContain("[def456] Maze Game");
   });
 
-  it("omits the existing-games block when list is empty", () => {
+  it("omits the existing-creations block when list is empty", () => {
     const prompt = getGuardianSystemPrompt("Clive");
-    expect(prompt).not.toContain("existing games");
+    expect(prompt).not.toContain("existing creations");
   });
 });
 
@@ -106,9 +113,9 @@ describe("getWorkerSystemPrompt", () => {
     expect(prompt).toContain("3000");
   });
 
-  it("ends with a GAME_READY marker spec", () => {
+  it("ends with a CREATION_READY marker spec", () => {
     const prompt = getWorkerSystemPrompt("/tmp/x", 3000);
-    expect(prompt).toContain("GAME_READY: games/<slug>/index.html");
+    expect(prompt).toContain("CREATION_READY: games/<slug>/index.html");
   });
 
   it("treats the embedded SPEC as the source of truth", () => {
@@ -129,18 +136,26 @@ describe("getWorkerSystemPrompt", () => {
 });
 
 describe("getPmSynthesizerSystemPrompt", () => {
-  it("identifies the role as a kids' game studio PM", () => {
+  it("identifies the role as a kids' creation studio PM", () => {
     const p = getPmSynthesizerSystemPrompt();
     expect(p).toMatch(/product manager/i);
     expect(p).toMatch(/kids/i);
+    expect(p).toMatch(/creation studio/i);
+  });
+
+  it("frames creations as games, stories, or learning material", () => {
+    const p = getPmSynthesizerSystemPrompt();
+    expect(p).toMatch(/game/i);
+    expect(p).toMatch(/stor/i);
+    expect(p).toMatch(/learn/i);
   });
 
   it("includes the spec.md template with all 6 sections", () => {
     const p = getPmSynthesizerSystemPrompt();
     expect(p).toContain("## Concept");
     expect(p).toContain("## Goal");
-    expect(p).toContain("## Controls");
-    expect(p).toContain("## Game elements");
+    expect(p).toContain("## Interactions");
+    expect(p).toContain("## Elements");
     expect(p).toContain("## Look & feel");
     expect(p).toContain("## Change log");
   });
@@ -187,8 +202,8 @@ describe("getGuardianSystemPrompt — slimmed for PM synthesizer", () => {
     expect(p).toMatch(/should i make it now/i);
   });
 
-  it("still tells the guardian to confirm and use GAME_NAME tokens", () => {
+  it("still tells the guardian to confirm and use CREATION_NAME tokens", () => {
     const p = getGuardianSystemPrompt("Clive");
-    expect(p).toContain("GAME_NAME:");
+    expect(p).toContain("CREATION_NAME:");
   });
 });
