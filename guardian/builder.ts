@@ -154,13 +154,13 @@ export function buildPromptForTest(args: {
 
 // ── Primary path: file-based job queue processed by the parent's Claude Code session ──
 
-const JOBS_DIR = join(config.playgroundDir, ".guardian", "jobs");
+const jobsDir = () => join(config.playgroundDir, ".guardian", "jobs");
 const POLL_MS = 4_000;
-const PICKUP_TIMEOUT_MS = 10 * 60 * 1000;  // Claude Code may be mid-build on another game; give it 10 min
+export const PICKUP_TIMEOUT_MS = 20 * 60 * 1000;  // Claude Code may be mid-build on another game; give it 20 min
 const TOTAL_TIMEOUT_MS = 30 * 60 * 1000;
 export const ZOMBIE_THRESHOLD_MS = 10 * 60 * 1000; // in_progress > this with no completion → dead session
 
-async function pollJobToCompletion(
+export async function pollJobToCompletion(
   jobPath: string,
   slug: string,
   startMs: number,
@@ -209,7 +209,13 @@ async function pollJobToCompletion(
       const pickupDeadline = zombieRequeued
         ? zombieRequeuedAt + PICKUP_TIMEOUT_MS
         : startMs + PICKUP_TIMEOUT_MS;
-      if (Date.now() >= pickupDeadline) throw new BuildNotPickedUpError();
+      if (Date.now() >= pickupDeadline) {
+        job.status = "failed";
+        job.error = "pickup timeout — no Claude Code session claimed the job in time";
+        job.completedAt = new Date().toISOString();
+        try { writeFileSync(jobPath, JSON.stringify(job, null, 2)); } catch { /* non-fatal */ }
+        throw new BuildNotPickedUpError();
+      }
     }
 
     if (elapsed >= TOTAL_TIMEOUT_MS) {
@@ -219,6 +225,36 @@ async function pollJobToCompletion(
 }
 
 const DEDUP_WINDOW_MS = 30 * 60 * 1000;
+
+/**
+ * Marks any pending job for the given slug that is older than PICKUP_TIMEOUT_MS
+ * as failed. Called before dedup scan so orphans don't get re-attached to.
+ * Exported for testing.
+ */
+export function cleanupOrphanPendingJobs(slug: string): void {
+  try {
+    const files = readdirSync(jobsDir()).filter((f) => f.endsWith(".json"));
+    const now = Date.now();
+    for (const f of files) {
+      try {
+        const fpath = join(jobsDir(), f);
+        const j = JSON.parse(readFileSync(fpath, "utf8")) as Record<string, unknown>;
+        if (
+          j.slug === slug &&
+          j.status === "pending" &&
+          j.createdAt &&
+          now - new Date(j.createdAt as string).getTime() > PICKUP_TIMEOUT_MS
+        ) {
+          j.status = "failed";
+          j.error = "superseded by newer build request";
+          j.completedAt = new Date().toISOString();
+          writeFileSync(fpath, JSON.stringify(j, null, 2));
+          console.log(`[builder] Cleaned up orphan-pending job: ${j.id}`);
+        }
+      } catch { /* skip */ }
+    }
+  } catch { /* jobs dir not yet readable */ }
+}
 
 async function buildGameViaJobQueue(
   gameName: string,
@@ -230,21 +266,23 @@ async function buildGameViaJobQueue(
   chatId: number | undefined,
   onProgress?: (msg: string) => void
 ): Promise<{ slug: string; url: string; jobPath: string }> {
-  mkdirSync(JOBS_DIR, { recursive: true });
+  mkdirSync(jobsDir(), { recursive: true });
+
+  cleanupOrphanPendingJobs(slug);
 
   // Attach to an existing pending/in_progress job for the same slug rather than
   // creating a duplicate — happens when BuildNotPickedUpError fires and the kid re-confirms.
   try {
-    const files = readdirSync(JOBS_DIR).filter((f) => f.endsWith(".json"));
+    const files = readdirSync(jobsDir()).filter((f) => f.endsWith(".json"));
     for (const f of files) {
       try {
-        const j = JSON.parse(readFileSync(join(JOBS_DIR, f), "utf8")) as Record<string, unknown>;
+        const j = JSON.parse(readFileSync(join(jobsDir(), f), "utf8")) as Record<string, unknown>;
         if (
           j.slug === slug &&
           (j.status === "pending" || j.status === "in_progress") &&
           new Date(j.createdAt as string).getTime() > Date.now() - DEDUP_WINDOW_MS
         ) {
-          const existingPath = join(JOBS_DIR, f);
+          const existingPath = join(jobsDir(), f);
           console.log(`[builder] Duplicate job for "${slug}" — attaching to existing ${j.id}`);
           onProgress?.("Already building it! Just a moment... 🔨");
           return pollJobToCompletion(existingPath, slug, Date.now(), onProgress);
@@ -254,7 +292,7 @@ async function buildGameViaJobQueue(
   } catch { /* jobs dir not yet readable — fall through to create new job */ }
 
   const id = `${Date.now()}-${slug}`;
-  const jobPath = join(JOBS_DIR, `${id}.json`);
+  const jobPath = join(jobsDir(), `${id}.json`);
   const prompt = buildPrompt(slug, isRevision, specContent, existingHtml, config.port);
 
   writeFileSync(jobPath, JSON.stringify({

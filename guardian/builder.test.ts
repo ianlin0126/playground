@@ -196,7 +196,138 @@ describe("BuildNotPickedUpError", () => {
   });
 });
 
-import { buildPromptForTest } from "./builder";
+import { buildPromptForTest, pollJobToCompletion, cleanupOrphanPendingJobs, BuildNotPickedUpError, PICKUP_TIMEOUT_MS } from "./builder";
+
+// ── pollJobToCompletion: pickup-timeout marks job failed (Fix 2) ────────────
+
+describe("pollJobToCompletion: pickup timeout", () => {
+  let savedDir: string;
+  let jobsDir: string;
+  let origSleep: typeof Bun.sleep;
+
+  beforeEach(() => {
+    savedDir = config.playgroundDir;
+    config.playgroundDir = testDir;
+    jobsDir = join(testDir, ".guardian", "jobs");
+    mkdirSync(jobsDir, { recursive: true });
+    // Stub Bun.sleep so the poll loop doesn't actually wait 4 s per tick
+    origSleep = Bun.sleep;
+    (Bun as { sleep: unknown }).sleep = () => Promise.resolve();
+  });
+
+  afterEach(() => {
+    config.playgroundDir = savedDir;
+    (Bun as { sleep: unknown }).sleep = origSleep;
+  });
+
+  it("throws BuildNotPickedUpError and writes status:failed when pickup deadline exceeded", async () => {
+    const jobId = `old-${Date.now()}`;
+    const jobPath = join(jobsDir, `${jobId}.json`);
+    const job = {
+      id: jobId,
+      slug: "test-game",
+      status: "pending",
+      createdAt: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
+    };
+    writeFileSync(jobPath, JSON.stringify(job, null, 2));
+
+    // startMs 21 minutes ago → immediately past the 20-min pickup deadline
+    const startMs = Date.now() - 21 * 60 * 1000;
+
+    await expect(pollJobToCompletion(jobPath, "test-game", startMs)).rejects.toBeInstanceOf(BuildNotPickedUpError);
+
+    const updated = JSON.parse(readFileSync(jobPath, "utf8"));
+    expect(updated.status).toBe("failed");
+    expect(updated.error).toContain("pickup timeout");
+    expect(updated.completedAt).toBeDefined();
+  });
+});
+
+// ── cleanupOrphanPendingJobs: orphan cleanup (Fix 3) ──────────────────────
+
+describe("cleanupOrphanPendingJobs", () => {
+  let savedDir: string;
+  let jobsDirPath: string;
+
+  beforeEach(() => {
+    savedDir = config.playgroundDir;
+    config.playgroundDir = testDir;
+    jobsDirPath = join(testDir, ".guardian", "jobs");
+    mkdirSync(jobsDirPath, { recursive: true });
+  });
+
+  afterEach(() => {
+    config.playgroundDir = savedDir;
+  });
+
+  it("marks orphan-pending job as superseded when older than PICKUP_TIMEOUT_MS", () => {
+    // Pre-write an orphan: same slug, pending, created 21+ min ago (past PICKUP_TIMEOUT_MS)
+    const orphanId = `orphan-${Date.now()}`;
+    const orphanPath = join(jobsDirPath, `${orphanId}.json`);
+    writeFileSync(orphanPath, JSON.stringify({
+      id: orphanId,
+      slug: "test-game",
+      status: "pending",
+      createdAt: new Date(Date.now() - 21 * 60 * 1000).toISOString(),
+    }, null, 2));
+
+    cleanupOrphanPendingJobs("test-game");
+
+    const orphan = JSON.parse(readFileSync(orphanPath, "utf8"));
+    expect(orphan.status).toBe("failed");
+    expect(orphan.error).toContain("superseded by newer build request");
+    expect(orphan.completedAt).toBeDefined();
+  });
+
+  it("creates a fresh pending job for the slug after the orphan is cleaned up", () => {
+    // Pre-write an orphan
+    const orphanId = `orphan-${Date.now()}`;
+    const orphanPath = join(jobsDirPath, `${orphanId}.json`);
+    writeFileSync(orphanPath, JSON.stringify({
+      id: orphanId,
+      slug: "test-game",
+      status: "pending",
+      createdAt: new Date(Date.now() - 21 * 60 * 1000).toISOString(),
+    }, null, 2));
+
+    // Cleanup marks the orphan as failed
+    cleanupOrphanPendingJobs("test-game");
+
+    // Write a new job simulating what buildGameViaJobQueue would create next
+    const newId = `${Date.now()}-test-game`;
+    const newJobPath = join(jobsDirPath, `${newId}.json`);
+    writeFileSync(newJobPath, JSON.stringify({
+      id: newId,
+      slug: "test-game",
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    }, null, 2));
+
+    // New job should have a different id from the orphan
+    const newJob = JSON.parse(readFileSync(newJobPath, "utf8"));
+    expect(newJob.id).not.toBe(orphanId);
+    expect(newJob.status).toBe("pending");
+  });
+
+  it("regression — does NOT mark a pending job within PICKUP_TIMEOUT_MS as failed", () => {
+    // Pre-write a pending job created 5 minutes ago (well within 20-min PICKUP_TIMEOUT_MS)
+    const inWindowId = `in-window-${Date.now()}`;
+    const inWindowPath = join(jobsDirPath, `${inWindowId}.json`);
+    writeFileSync(inWindowPath, JSON.stringify({
+      id: inWindowId,
+      slug: "test-game",
+      status: "pending",
+      createdAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    }, null, 2));
+
+    cleanupOrphanPendingJobs("test-game");
+
+    // In-window job must NOT be touched
+    const inWindow = JSON.parse(readFileSync(inWindowPath, "utf8"));
+    expect(inWindow.status).toBe("pending");
+    expect(inWindow.error).toBeUndefined();
+  });
+});
 
 describe("buildPrompt with SPEC", () => {
   const sampleSpec = `# Star Catcher 🌟\n\n## Concept\nCatch falling stars (_kid_)\n\n## Goal\nGet 10 stars (_kid_)\n\n## Interactions\n- tap (_kid_)\n\n## Elements\n- **Main character / player:** basket (_kid_)\n\n## Look & feel\n- **Theme / setting:** night sky (_kid_)\n\n## Change log\n- **2026-05-02** — initial build\n`;
