@@ -279,34 +279,125 @@ describe("cleanupOrphanPendingJobs", () => {
     expect(orphan.completedAt).toBeDefined();
   });
 
-  it("creates a fresh pending job for the slug after the orphan is cleaned up", () => {
-    // Pre-write an orphan
-    const orphanId = `orphan-${Date.now()}`;
-    const orphanPath = join(jobsDirPath, `${orphanId}.json`);
-    writeFileSync(orphanPath, JSON.stringify({
-      id: orphanId,
-      slug: "test-game",
+  it("cleanup-then-dedup: orphan for slug X is marked failed; in-window job for slug Y is untouched", () => {
+    // Orphan pending for slug X (21 min old — past PICKUP_TIMEOUT_MS)
+    const xOrphanId = `orphan-x-${Date.now()}`;
+    const xOrphanPath = join(jobsDirPath, `${xOrphanId}.json`);
+    writeFileSync(xOrphanPath, JSON.stringify({
+      id: xOrphanId,
+      slug: "slug-x",
       status: "pending",
       createdAt: new Date(Date.now() - 21 * 60 * 1000).toISOString(),
     }, null, 2));
 
-    // Cleanup marks the orphan as failed
-    cleanupOrphanPendingJobs("test-game");
-
-    // Write a new job simulating what buildGameViaJobQueue would create next
-    const newId = `${Date.now()}-test-game`;
-    const newJobPath = join(jobsDirPath, `${newId}.json`);
-    writeFileSync(newJobPath, JSON.stringify({
-      id: newId,
-      slug: "test-game",
+    // In-window pending for slug Y (5 min old — well within PICKUP_TIMEOUT_MS)
+    const yInWindowId = `in-window-y-${Date.now()}`;
+    const yInWindowPath = join(jobsDirPath, `${yInWindowId}.json`);
+    writeFileSync(yInWindowPath, JSON.stringify({
+      id: yInWindowId,
+      slug: "slug-y",
       status: "pending",
-      createdAt: new Date().toISOString(),
+      createdAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
     }, null, 2));
 
-    // New job should have a different id from the orphan
-    const newJob = JSON.parse(readFileSync(newJobPath, "utf8"));
-    expect(newJob.id).not.toBe(orphanId);
-    expect(newJob.status).toBe("pending");
+    // Cleanup only targets slug-x
+    cleanupOrphanPendingJobs("slug-x");
+
+    // (a) Slug X orphan must be marked failed
+    const xOrphan = JSON.parse(readFileSync(xOrphanPath, "utf8"));
+    expect(xOrphan.status).toBe("failed");
+    expect(xOrphan.error).toContain("superseded by newer build request");
+
+    // (b) Slug Y in-window job must be completely untouched
+    const yInWindow = JSON.parse(readFileSync(yInWindowPath, "utf8"));
+    expect(yInWindow.status).toBe("pending");
+    expect(yInWindow.error).toBeUndefined();
+  });
+
+  it("slug-isolation: orphan for slug B is untouched when cleaning up slug A", () => {
+    // Two orphan-pending jobs, both >20 min old, different slugs
+    const aOrphanId = `orphan-a-${Date.now()}`;
+    const aOrphanPath = join(jobsDirPath, `${aOrphanId}.json`);
+    writeFileSync(aOrphanPath, JSON.stringify({
+      id: aOrphanId,
+      slug: "slug-a",
+      status: "pending",
+      createdAt: new Date(Date.now() - 21 * 60 * 1000).toISOString(),
+    }, null, 2));
+
+    const bOrphanId = `orphan-b-${Date.now()}`;
+    const bOrphanPath = join(jobsDirPath, `${bOrphanId}.json`);
+    writeFileSync(bOrphanPath, JSON.stringify({
+      id: bOrphanId,
+      slug: "slug-b",
+      status: "pending",
+      createdAt: new Date(Date.now() - 21 * 60 * 1000).toISOString(),
+    }, null, 2));
+
+    cleanupOrphanPendingJobs("slug-a");
+
+    // Slug A orphan is cleaned up
+    const aOrphan = JSON.parse(readFileSync(aOrphanPath, "utf8"));
+    expect(aOrphan.status).toBe("failed");
+
+    // Slug B orphan is left alone — not cleaned up, still pending
+    const bOrphan = JSON.parse(readFileSync(bOrphanPath, "utf8"));
+    expect(bOrphan.status).toBe("pending");
+    expect(bOrphan.error).toBeUndefined();
+  });
+
+  it("in_progress immunity: zombie in_progress job is NOT touched by cleanup", () => {
+    // in_progress job for slug X, pickedUpAt 25 min ago
+    const zombieId = `zombie-${Date.now()}`;
+    const zombiePath = join(jobsDirPath, `${zombieId}.json`);
+    writeFileSync(zombiePath, JSON.stringify({
+      id: zombieId,
+      slug: "slug-x",
+      status: "in_progress",
+      pickedUpAt: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
+      createdAt: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
+    }, null, 2));
+
+    cleanupOrphanPendingJobs("slug-x");
+
+    // Must not be touched — cleanup only targets pending jobs
+    const zombie = JSON.parse(readFileSync(zombiePath, "utf8"));
+    expect(zombie.status).toBe("in_progress");
+    expect(zombie.error).toBeUndefined();
+  });
+
+  it("boundary: 19.5-min-old job is NOT cleaned up (just under threshold)", () => {
+    const id = `boundary-under-${Date.now()}`;
+    const jobPath = join(jobsDirPath, `${id}.json`);
+    writeFileSync(jobPath, JSON.stringify({
+      id,
+      slug: "slug-x",
+      status: "pending",
+      createdAt: new Date(Date.now() - 19.5 * 60 * 1000).toISOString(),
+    }, null, 2));
+
+    cleanupOrphanPendingJobs("slug-x");
+
+    const job = JSON.parse(readFileSync(jobPath, "utf8"));
+    expect(job.status).toBe("pending");
+    expect(job.error).toBeUndefined();
+  });
+
+  it("boundary: 20.5-min-old job IS cleaned up (just over threshold)", () => {
+    const id = `boundary-over-${Date.now()}`;
+    const jobPath = join(jobsDirPath, `${id}.json`);
+    writeFileSync(jobPath, JSON.stringify({
+      id,
+      slug: "slug-x",
+      status: "pending",
+      createdAt: new Date(Date.now() - 20.5 * 60 * 1000).toISOString(),
+    }, null, 2));
+
+    cleanupOrphanPendingJobs("slug-x");
+
+    const job = JSON.parse(readFileSync(jobPath, "utf8"));
+    expect(job.status).toBe("failed");
+    expect(job.error).toContain("superseded by newer build request");
   });
 
   it("regression — does NOT mark a pending job within PICKUP_TIMEOUT_MS as failed", () => {

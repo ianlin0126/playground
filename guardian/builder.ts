@@ -156,10 +156,12 @@ export function buildPromptForTest(args: {
 
 const jobsDir = () => join(config.playgroundDir, ".guardian", "jobs");
 const POLL_MS = 4_000;
+/** @internal Exported for tests; not part of the public API. */
 export const PICKUP_TIMEOUT_MS = 20 * 60 * 1000;  // Claude Code may be mid-build on another game; give it 20 min
 const TOTAL_TIMEOUT_MS = 30 * 60 * 1000;
 export const ZOMBIE_THRESHOLD_MS = 10 * 60 * 1000; // in_progress > this with no completion → dead session
 
+/** @internal Exported for tests; not part of the public API. */
 export async function pollJobToCompletion(
   jobPath: string,
   slug: string,
@@ -210,6 +212,11 @@ export async function pollJobToCompletion(
         ? zombieRequeuedAt + PICKUP_TIMEOUT_MS
         : startMs + PICKUP_TIMEOUT_MS;
       if (Date.now() >= pickupDeadline) {
+        // RACE: between the JSON.parse above and writeFileSync below, a Claude
+        // Code session could claim the job (status: "in_progress"). We'd
+        // overwrite that claim with "failed" here. Fixing properly requires
+        // re-reading the file and re-checking status before writing — file
+        // a follow-up if this manifests in production.
         job.status = "failed";
         job.error = "pickup timeout — no Claude Code session claimed the job in time";
         job.completedAt = new Date().toISOString();
@@ -249,7 +256,7 @@ export function cleanupOrphanPendingJobs(slug: string): void {
           j.error = "superseded by newer build request";
           j.completedAt = new Date().toISOString();
           writeFileSync(fpath, JSON.stringify(j, null, 2));
-          console.log(`[builder] Cleaned up orphan-pending job: ${j.id}`);
+          console.warn(`[builder] Cleaned up orphan-pending job: ${j.id}`);
         }
       } catch { /* skip */ }
     }
