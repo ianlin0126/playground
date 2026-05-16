@@ -7,6 +7,28 @@ import { getGuardianSystemPrompt } from "./prompts";
 import { buildGame, BuildNotPickedUpError, getExistingGames, ZOMBIE_THRESHOLD_MS, resolveSlug } from "./builder";
 import { synthesizeSpec, writeSpecFile, buildFallbackSpec, SynthesizerError } from "./synthesizer";
 
+// ── Retry-cap state ───────────────────────────────────────────────────────
+
+/** @internal Exported for tests */
+export const PICKUP_FAILURE_COOLDOWN_MS = 30 * 60 * 1000;
+/** @internal Exported for tests */
+export const PICKUP_FAILURE_THRESHOLD = 2;
+
+const recentPickupFailures = new Map<string, number[]>();
+
+/** @internal Exported for tests */
+export function recordPickupFailure(slug: string): { capped: boolean; failureCount: number } {
+  const now = Date.now();
+  const cutoff = now - PICKUP_FAILURE_COOLDOWN_MS;
+  const recent = (recentPickupFailures.get(slug) || []).filter(t => t > cutoff);
+  recent.push(now);
+  recentPickupFailures.set(slug, recent);
+  return {
+    capped: recent.length > PICKUP_FAILURE_THRESHOLD,
+    failureCount: recent.length,
+  };
+}
+
 // ── State ─────────────────────────────────────────────────────────────────
 
 export type TelegramState = {
@@ -519,13 +541,25 @@ async function handleMessage(
         console.error("Build failed:", err);
         let reply: string;
         if (err instanceof BuildNotPickedUpError) {
-          reply = `Hmm, I hit a little snag! 😅 Want to try again? Just say yes and I'll get right on it! 🔨`;
+          const slug = resolveSlug(gameName, gameId);
+          const { capped, failureCount } = recordPickupFailure(slug);
+          if (capped) {
+            reply = `The build helper hasn't picked up for ${failureCount} tries in a row. 😅\n\nA grown-up needs to check that Claude Code is open in the playground folder. I'll wait — try again in a bit when it's running!`;
+            await sendMessage(chatId, reply);
+            logTurnSafely("guardian", reply, "assistant");
+            setPendingBuild(null);
+          } else {
+            reply = `Hmm, I tried to build but the helper didn't pick it up in 20 minutes. 🔧\n\nAsk a grown-up to check that Claude Code is open in the playground folder. Then say "yes" to try again!`;
+            await sendMessage(chatId, reply);
+            logTurnSafely("guardian", reply, "assistant");
+            setPendingBuild({ gameName, gameId, revisionRequest });
+          }
         } else {
           reply = `Oops, something went a little wrong! 😅 Want to try again? Just say yes!`;
+          await sendMessage(chatId, reply);
+          logTurnSafely("guardian", reply, "assistant");
+          setPendingBuild({ gameName, gameId, revisionRequest });
         }
-        await sendMessage(chatId, reply);
-        logTurnSafely("guardian", reply, "assistant");
-        setPendingBuild({ gameName, gameId, revisionRequest });
       }
       return;
     } else if (intent === "CANCEL") {
@@ -843,6 +877,7 @@ export async function recoverOrphanedJobs(): Promise<void> {
             ? `✅ Updated! Same link: ${job.url} 🎉`
             : `Here it is!! Open this on your tablet: ${job.url} 🎉`;
           await sendMessage(job.chatId as number, msg);
+          logTurnSafely("guardian", msg, "assistant");
           job.telegramSentAt = new Date().toISOString();
           writeFileSync(filePath, JSON.stringify(job, null, 2));
           console.log(`[telegram] Orphaned job ${f} recovered`);
