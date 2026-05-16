@@ -9,16 +9,38 @@ import { synthesizeSpec, writeSpecFile, buildFallbackSpec, SynthesizerError } fr
 
 // ── Retry-cap state ───────────────────────────────────────────────────────
 
-/** @internal Exported for tests */
-export const PICKUP_FAILURE_COOLDOWN_MS = 30 * 60 * 1000;
-/** @internal Exported for tests */
+/**
+ * @internal Exported for tests.
+ * Maximum allowed pickup failures within {@link PICKUP_FAILURE_COOLDOWN_MS}
+ * before guardian stops auto-re-spawning builds for the same slug.
+ * Capped on 3rd failure to give the parent one obvious "Claude Code is
+ * down" signal before going silent.
+ */
 export const PICKUP_FAILURE_THRESHOLD = 2;
 
+/**
+ * @internal Exported for tests.
+ * Time window over which pickup failures are counted toward
+ * {@link PICKUP_FAILURE_THRESHOLD}. Set to 30 min to allow normal
+ * "parent stepped away briefly" idle gaps without tripping the cap.
+ */
+export const PICKUP_FAILURE_COOLDOWN_MS = 30 * 60 * 1000;
+
+/**
+ * Per-slug history of recent pickup failures. Map entries are GC-collected
+ * implicitly: stale timestamps are filtered out on each call to
+ * {@link recordPickupFailure}, but slugs that haven't failed in a long time
+ * still keep their (empty) entry. In practice this is bounded by the number
+ * of unique games the kid has ever requested (~tens), so no janitor.
+ */
 const recentPickupFailures = new Map<string, number[]>();
 
-/** @internal Exported for tests */
-export function recordPickupFailure(slug: string): { capped: boolean; failureCount: number } {
-  const now = Date.now();
+/**
+ * @internal Exported for tests.
+ * Records a pickup failure for the given slug and returns whether the cap has
+ * been reached. Accepts an optional `now` timestamp for deterministic testing.
+ */
+export function recordPickupFailure(slug: string, now: number = Date.now()): { capped: boolean; failureCount: number } {
   const cutoff = now - PICKUP_FAILURE_COOLDOWN_MS;
   const recent = (recentPickupFailures.get(slug) || []).filter(t => t > cutoff);
   recent.push(now);
@@ -529,6 +551,8 @@ async function handleMessage(
           (msg) => sendMessage(chatId, msg).catch(() => {}),
           gameId
         );
+        // Clear failure history so next attempt starts fresh if CC was down mid-window.
+        recentPickupFailures.delete(resolveSlug(gameName, gameId));
         const reply = `Here it is!! Open this on your tablet: ${url} 🎉`;
         await sendMessage(chatId, reply);
         logTurnSafely("guardian", reply, "assistant");
@@ -544,6 +568,7 @@ async function handleMessage(
           const slug = resolveSlug(gameName, gameId);
           const { capped, failureCount } = recordPickupFailure(slug);
           if (capped) {
+            console.warn(`[telegram] pickup-failure cap reached for slug=${slug} (count=${failureCount}). Pending build cleared.`);
             reply = `The build helper hasn't picked up for ${failureCount} tries in a row. 😅\n\nA grown-up needs to check that Claude Code is open in the playground folder. I'll wait — try again in a bit when it's running!`;
             await sendMessage(chatId, reply);
             logTurnSafely("guardian", reply, "assistant");

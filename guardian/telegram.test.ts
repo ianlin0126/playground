@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { isConfirmation, isWholeMessageConfirmation, looksLikeCancel, logRawReply, classifyPendingResponse, logTurnSafely, logKidTurnSafely, conversationHistory, recordPickupFailure, PICKUP_FAILURE_THRESHOLD, PICKUP_FAILURE_COOLDOWN_MS, type RawReplyEntry, type PendingIntent } from "./telegram";
+import { isConfirmation, isWholeMessageConfirmation, looksLikeCancel, logRawReply, classifyPendingResponse, logTurnSafely, logKidTurnSafely, conversationHistory, recordPickupFailure, recoverOrphanedJobs, PICKUP_FAILURE_THRESHOLD, PICKUP_FAILURE_COOLDOWN_MS, type RawReplyEntry, type PendingIntent } from "./telegram";
+import { config } from "./config";
 
 // telegram.ts keeps isFrustrated and flagsMessage private. Re-implement them
 // here to lock in current behavior — keep in sync with telegram.ts.
@@ -911,11 +912,34 @@ describe("recordPickupFailure — retry cap", () => {
   });
 
   it("doesn't cap when prior failures are older than the cooldown window", () => {
-    // Use a unique slug, manually inject two stale timestamps via a fresh slug
-    // by calling the exported function with a mocked Date.now() approach.
-    // Since we can't easily mock Date.now() without changing the function sig,
-    // we verify the contract by using two distinct slugs to confirm isolation:
-    // failures for slug A don't affect slug B.
+    const slug = "test-slug-decay-" + Math.random().toString(36).slice(2);
+    const FAKE_NOW = 1_700_000_000_000;
+    const PAST = FAKE_NOW - (PICKUP_FAILURE_COOLDOWN_MS + 60_000); // 31 min ago
+
+    // Pre-load 2 stale failures, then 1 fresh.
+    recordPickupFailure(slug, PAST);
+    recordPickupFailure(slug, PAST);
+    const result = recordPickupFailure(slug, FAKE_NOW);
+
+    // The 2 stale failures should be filtered out by the cutoff, so the
+    // new failure is treated as the FIRST in the window (count=1, not 3).
+    expect(result.failureCount).toBe(1);
+    expect(result.capped).toBe(false);
+  });
+
+  it("caps on 3 consecutive failures in the SAME window, but the window slides", () => {
+    const slug = "test-slug-slide-" + Math.random().toString(36).slice(2);
+    const T0 = 1_800_000_000_000;
+    recordPickupFailure(slug, T0);
+    recordPickupFailure(slug, T0 + 60_000);
+    expect(recordPickupFailure(slug, T0 + 120_000).capped).toBe(true);
+    // Jump far enough past the cooldown window that all prior failures (latest at
+    // T0+120_000) are outside the new cutoff. At T0+COOLDOWN+121_000, the cutoff
+    // is T0+121_000, so T0+120_000 is filtered and the new entry is count=1.
+    expect(recordPickupFailure(slug, T0 + PICKUP_FAILURE_COOLDOWN_MS + 121_000).failureCount).toBe(1);
+  });
+
+  it("slug isolation: failures for slug A don't affect slug B", () => {
     const slugA = "test-slug-isolation-a-" + Date.now();
     const slugB = "test-slug-isolation-b-" + Date.now();
     recordPickupFailure(slugA);
@@ -936,7 +960,7 @@ describe("recordPickupFailure — retry cap", () => {
   });
 });
 
-// ── Fix B: LLM output parser uses strict equality ─────────────────────────────
+// ── Fix B: recoverOrphanedJobs DB logging ────────────────────────────────────
 
 // ── B3: LLM output parser uses strict equality ────────────────────────────────
 
@@ -1060,5 +1084,113 @@ describe("classifyPendingResponse — I5 fix: pending context in user message no
     const fake = mockAnthropicCapturingCall();
     await classifyPendingResponse(kidReply, samplePending, fake as never);
     expect(fake.capturedUserContent).toContain(kidReply);
+  });
+});
+
+// ── recoverOrphanedJobs — logs recovery message to DB (Fix B) ────────────────
+
+describe("recoverOrphanedJobs — logTurnSafely called on recovery (Fix B)", () => {
+  let testDir: string;
+  let originalPlaygroundDir: string;
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    testDir = mkdtempSync(join(tmpdir(), "telegram-recovery-"));
+    mkdirSync(join(testDir, ".guardian", "jobs"), { recursive: true });
+    originalPlaygroundDir = config.playgroundDir;
+    config.playgroundDir = testDir;
+    // Stub fetch to return a successful Telegram API response so sendMessage doesn't throw.
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ ok: true, result: {} }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    conversationHistory.length = 0;
+  });
+
+  afterEach(() => {
+    config.playgroundDir = originalPlaygroundDir;
+    globalThis.fetch = originalFetch;
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("sets telegramSentAt on a done+undelivered job after recoverOrphanedJobs", async () => {
+    const jobPath = join(testDir, ".guardian", "jobs", "1700000000000-test.json");
+    writeFileSync(jobPath, JSON.stringify({
+      id: "1700000000000-test",
+      slug: "test-game",
+      chatId: 12345,
+      isRevision: false,
+      status: "done",
+      url: "http://example.com/games/test/?v=123",
+      telegramSentAt: null,
+      completedAt: new Date().toISOString(),
+    }, null, 2));
+
+    await recoverOrphanedJobs();
+
+    const updated = JSON.parse(readFileSync(jobPath, "utf8"));
+    expect(updated.telegramSentAt).toBeTruthy();
+    expect(typeof updated.telegramSentAt).toBe("string");
+  });
+
+  it("logTurnSafely is invoked during recovery (insertTurn failure is non-fatal, console.error is called)", async () => {
+    // In tests insertTurn throws "DB not initialised". logTurnSafely catches that
+    // and logs to console.error. We spy on console.error to confirm the call path.
+    const jobPath = join(testDir, ".guardian", "jobs", "1700000000001-test.json");
+    writeFileSync(jobPath, JSON.stringify({
+      id: "1700000000001-test",
+      slug: "test-game-2",
+      chatId: 99999,
+      isRevision: false,
+      status: "done",
+      url: "http://example.com/games/test2/?v=456",
+      telegramSentAt: null,
+      completedAt: new Date().toISOString(),
+    }, null, 2));
+
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await recoverOrphanedJobs();
+      // logTurnSafely hits the catch branch (insertTurn not initialised) and calls console.error
+      const dbHiccupCalls = errorSpy.mock.calls.filter(
+        (args) => typeof args[0] === "string" && args[0].includes("[telegram] failed to log guardian turn")
+      );
+      expect(dbHiccupCalls.length).toBeGreaterThanOrEqual(1);
+    } finally {
+      errorSpy.mockRestore();
+    }
+
+    // telegramSentAt must still be set even though insertTurn threw
+    const updated = JSON.parse(readFileSync(jobPath, "utf8"));
+    expect(updated.telegramSentAt).toBeTruthy();
+  });
+
+  it("still sets telegramSentAt even if logTurnSafely's insertTurn throws (defensive)", async () => {
+    // This test pins the contract: DB logging failures must not block recovery.
+    // logTurnSafely is designed to swallow insertTurn errors; this verifies the
+    // real outcome (telegramSentAt persistence) is unaffected.
+    const jobPath = join(testDir, ".guardian", "jobs", "1700000000002-test.json");
+    writeFileSync(jobPath, JSON.stringify({
+      id: "1700000000002-test",
+      slug: "test-game-3",
+      chatId: 77777,
+      isRevision: true,
+      status: "done",
+      url: "http://example.com/games/test3/?v=789",
+      telegramSentAt: null,
+      completedAt: new Date().toISOString(),
+    }, null, 2));
+
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await recoverOrphanedJobs();
+    } finally {
+      errorSpy.mockRestore();
+    }
+
+    const updated = JSON.parse(readFileSync(jobPath, "utf8"));
+    expect(updated.telegramSentAt).toBeTruthy();
   });
 });
